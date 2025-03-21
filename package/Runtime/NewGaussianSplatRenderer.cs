@@ -303,7 +303,7 @@ namespace GaussianSplatting.Runtime
                 2, 3, 6, 3, 7, 6
             });
 
-            InitRadixSortBuffers(splatCount);
+            // InitRadixSortBuffers(splatCount);
             InitSortBuffers(splatCount);
             
             // 初始化 GeometryState
@@ -338,13 +338,15 @@ namespace GaussianSplatting.Runtime
                 { name = "BinStateLeftTileKeyData" };
             m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * 20, 4)
                 { name = "BinStateLeftTileValueData" };
+            
+            InitRadixSortBuffers(splatCount);
 
         }
 
         public void EnsureImageState(Camera cam)
         {
             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
-            if (m_PreTileX != tile_x || m_PreTileY != tile_y)
+            if (m_PreTileX != tile_x || m_PreTileY != tile_y || m_ImageState_left_ranges == null || m_ImageState_right_ranges == null)
             {
                 // 更新之前先销毁原来的数据
                 DisposeBuffer(ref m_ImageState_left_ranges);
@@ -367,6 +369,9 @@ namespace GaussianSplatting.Runtime
                     m_CSSplatUtilities.Dispatch( (int)KernelIndices.InitImageRanges,
                         count, 1, 1);
                 }
+                
+                m_PreTileX = tile_x;
+                m_PreTileY = tile_y;
             }
         }
         
@@ -379,8 +384,25 @@ namespace GaussianSplatting.Runtime
                 splatCount + 2048,
                 ref m_ThreadBlockReduction);
             
+            // 初始化第一遍的基数排序需要的资源
+            m_FirstRadixSorterArgs.resources.Dispose();
             m_FirstRadixSorter = new GpuSorting(m_CSSplatUtilities);
+            m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
+            m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
+            if (m_Sorter.Valid)
+            {
+                m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)splatCount);
+            }
+            
+            // 初始化第二遍的基数排序需要的资源
+            m_SecondRadixSorterArgs.resources.Dispose();
             m_SecondRadixSorter = new GpuSorting(m_CSSplatUtilities);
+            m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
+            m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
+            if (m_Sorter.Valid)
+            {
+                m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)splatCount * 20);
+            }
         }
 
         void InitSortBuffers(int count)
@@ -513,6 +535,8 @@ namespace GaussianSplatting.Runtime
 
             m_SorterArgs.resources.Dispose();
             DisposeBuffer(ref m_ThreadBlockReduction);
+            m_FirstRadixSorterArgs.resources.Dispose();
+            m_SecondRadixSorterArgs.resources.Dispose();
 
             DisposeBuffer(ref m_GeomState_data);
             DisposeBuffer(ref m_GeomState_left_first_touched_tiles);
@@ -677,14 +701,18 @@ namespace GaussianSplatting.Runtime
             }
             
             // 3. 第一次基于深度进行排序
-            m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
-            m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
-            m_FirstRadixSorterArgs.count = (uint)m_SplatCount;
-            if (m_Sorter.Valid)
+            // m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
+            // m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
+            // m_FirstRadixSorterArgs.count = (uint)m_SplatCount;
+            // if (m_Sorter.Valid)
+            // {
+            //     // 初始化第一遍的基数排序
+            //     m_FirstRadixSorterArgs.resources.Dispose();
+            //     m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_FirstRadixSorterArgs.count);
+            //     m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
+            // }
             {
-                // 初始化第一遍的基数排序
-                m_FirstRadixSorterArgs.resources.Dispose();
-                m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_FirstRadixSorterArgs.count);
+                m_FirstRadixSorterArgs.count = (uint)m_SplatCount;
                 m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
             }
             
@@ -772,15 +800,19 @@ namespace GaussianSplatting.Runtime
             }
             
             // 8. 第二次基数排序
-            m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
-            m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
-            // m_SecondRadixSorterArgs.count = (uint)number_rendered;
-            m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
-            if (m_Sorter.Valid)
+            // m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
+            // m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
+            // // m_SecondRadixSorterArgs.count = (uint)number_rendered;
+            // m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
+            // if (m_Sorter.Valid)
+            // {
+            //     // 初始化第一遍的基数排序
+            //     m_SecondRadixSorterArgs.resources.Dispose();
+            //     m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_SecondRadixSorterArgs.count);
+            //     m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
+            // }
             {
-                // 初始化第一遍的基数排序
-                m_SecondRadixSorterArgs.resources.Dispose();
-                m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_SecondRadixSorterArgs.count);
+                m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
                 m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
             }
             
@@ -804,39 +836,39 @@ namespace GaussianSplatting.Runtime
                         count, 1, 1);
                 }
                 
-                // DEBUG: 计算 ImageState 中 range 的和
-                {
-                    GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
-                    int tile_count = tile_x * tile_y;
-                    // Debug.Log("tile_x: " + tile_x + ", tile_y: " + tile_y);
-                    cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, tile_count);
-                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                        Props.ImageLeftRange, m_ImageState_left_ranges);
-                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                        Props.ImageRightRange, m_ImageState_right_ranges);
-                    
-                    m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcRanges, out uint gsX,
-                        out _, out _);
-                    int count = (tile_count + (int)gsX - 1) / (int)gsX;
-                    cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                        count, 1, 1);
-                    
-                    Int2Data[] ImageRangeData = new Int2Data[m_ImageState_right_ranges.count];
-                    m_ImageState_right_ranges.GetData(ImageRangeData);
-                    int maxValue = 0;
-                    int maxIndex = 0;
-                    for (int i = 0; i < ImageRangeData.Length; ++i)
-                    {
-                        int currentValue = (int)ImageRangeData[i].x;
-                        int currentIndex = (int)ImageRangeData[i].y;
-                        if (currentValue > maxValue)
-                        {
-                            maxValue = currentValue;
-                            maxIndex = currentIndex;
-                        }
-                    }
-                    // Debug.Log("TileCount: " + tile_count + "; MaxValue: " + maxValue + "; MaxIndex: " + maxIndex);
-                }
+                // // DEBUG: 计算 ImageState 中 range 的和
+                // {
+                //     GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
+                //     int tile_count = tile_x * tile_y;
+                //     // Debug.Log("tile_x: " + tile_x + ", tile_y: " + tile_y);
+                //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, tile_count);
+                //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
+                //         Props.ImageLeftRange, m_ImageState_left_ranges);
+                //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
+                //         Props.ImageRightRange, m_ImageState_right_ranges);
+                //     
+                //     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcRanges, out uint gsX,
+                //         out _, out _);
+                //     int count = (tile_count + (int)gsX - 1) / (int)gsX;
+                //     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
+                //         count, 1, 1);
+                //     
+                //     Int2Data[] ImageRangeData = new Int2Data[m_ImageState_right_ranges.count];
+                //     m_ImageState_right_ranges.GetData(ImageRangeData);
+                //     int maxValue = 0;
+                //     int maxIndex = 0;
+                //     for (int i = 0; i < ImageRangeData.Length; ++i)
+                //     {
+                //         int currentValue = (int)ImageRangeData[i].x;
+                //         int currentIndex = (int)ImageRangeData[i].y;
+                //         if (currentValue > maxValue)
+                //         {
+                //             maxValue = currentValue;
+                //             maxIndex = currentIndex;
+                //         }
+                //     }
+                //     // Debug.Log("TileCount: " + tile_count + "; MaxValue: " + maxValue + "; MaxIndex: " + maxIndex);
+                // }
             }
         }
         
