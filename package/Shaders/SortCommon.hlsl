@@ -36,14 +36,6 @@
 #define RADIX_LOG           8U      //log2(RADIX)
 #define RADIX_PASSES        4U      //(Key width) / RADIX_LOG
 
-cbuffer cbGpuSorting : register(b0)
-{
-    uint e_numKeys;
-    uint e_radixShift;
-    uint e_threadBlocks;
-    uint padding;
-};
-
 #if defined(KEY_UINT)
 RWStructuredBuffer<uint> b_sort;
 RWStructuredBuffer<uint> b_alt;
@@ -94,21 +86,6 @@ struct DigitStruct
 //*****************************************************************************
 //HELPER FUNCTIONS
 //*****************************************************************************
-//Due to a bug with SPIRV pre 1.6, we cannot use WaveGetLaneCount() to get the currently active wavesize 
-inline uint getWaveSize()
-{
-#if defined(VULKAN)
-    GroupMemoryBarrierWithGroupSync(); //Make absolutely sure the wave is not diverged here
-    return dot(countbits(WaveActiveBallot(true)), uint4(1, 1, 1, 1));
-#else
-    return WaveGetLaneCount();
-#endif
-}
-
-inline uint getWaveIndex(uint gtid, uint waveSize)
-{
-    return gtid / waveSize;
-}
 
 //Radix Tricks by Michael Herf
 //http://stereopsis.com/radix.html

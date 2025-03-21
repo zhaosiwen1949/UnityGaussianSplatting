@@ -1,0 +1,625 @@
+// SPDX-License-Identifier: MIT
+#define GROUP_SIZE 1024
+
+#pragma kernel CSSetIndices
+#pragma kernel CSCalcDistances
+#pragma kernel CSCalcViewData
+#pragma kernel CSPreProcessViewData
+#pragma kernel CSDuplicateWithDepthKeys
+#pragma kernel CSReorderTouchedTiles
+#pragma kernel CSDuplicateWithTileKeys
+#pragma kernel CSIdentifyTileRanges
+#pragma kernel CSInitImageRanges
+#pragma kernel CSCalcRanges
+#pragma kernel CSRenderViewData
+
+// DeviceRadixSort
+#pragma multi_compile __ KEY_UINT KEY_INT KEY_FLOAT
+#pragma multi_compile __ PAYLOAD_UINT PAYLOAD_INT PAYLOAD_FLOAT
+#pragma multi_compile __ SHOULD_ASCEND
+#pragma multi_compile __ SORT_PAIRS
+#pragma multi_compile __ VULKAN
+
+#pragma kernel InitDeviceRadixSort
+#pragma kernel Upsweep
+#pragma kernel Scan
+#pragma kernel Downsweep
+
+// PrefixSum - ReduceThenScan
+#pragma kernel Reduce
+#pragma kernel PrefixScan
+#pragma kernel PropagateInclusive
+#pragma kernel PropagateExclusive
+
+// GPU sorting needs wave ops
+#pragma require wavebasic
+#pragma require waveballot
+#pragma use_dxc
+
+cbuffer cbCommon : register(b0)
+{
+    // Sorting
+    uint e_numKeys;
+    uint e_radixShift;
+    uint e_threadBlocks;
+    uint padding;
+    // PrefixSum
+    uint e_vectorizedSize;
+    uint e_isPartial;
+    uint e_fullDispatches;
+};
+
+
+//Due to a bug with SPIRV pre 1.6, we cannot use WaveGetLaneCount() to get the currently active wavesize 
+inline uint getWaveSize()
+{
+    #if defined(VULKAN)
+    GroupMemoryBarrierWithGroupSync(); //Make absolutely sure the wave is not diverged here
+    return dot(countbits(WaveActiveBallot(true)), uint4(1, 1, 1, 1));
+    #else
+    return WaveGetLaneCount();
+    #endif
+}
+
+inline uint getWaveIndex(uint gtid, uint waveSize)
+{
+    return gtid / waveSize; //CAUTION, 1D WORKGROUP ONLY!
+}
+
+#include "ReduceThenScan.hlsl"
+#include "DeviceRadixSort.hlsl"
+#include "GaussianSplatting.hlsl"
+#include "UnityCG.cginc"
+
+float4x4 _MatrixObjectToWorld;
+float4x4 _MatrixWorldToObject;
+float4x4 _MatrixMV;
+float4 _VecScreenParams;
+float4 _VecWorldSpaceCameraPos;
+int _SelectionMode;
+
+struct GeomData
+{
+    int4 touched_rects;
+    float4 conic_opacity;
+    float4 rgb;
+    float2 mean2D;
+    float depth;
+    float radius;
+};
+
+RWStructuredBuffer<GeomData> _GeomData;
+RWStructuredBuffer<int> _GeomLeftTouchedTiles;
+RWStructuredBuffer<int> _GeomRightTouchedTiles;
+RWStructuredBuffer<int4> _GeomFirstTouchedTiles;
+RWStructuredBuffer<int> _GeomSecondTouchedTiles;
+RWStructuredBuffer<int4> _GeomPointOffset;
+RWStructuredBuffer<float> _BinPointListDepthKey;
+RWStructuredBuffer<uint> _BinPointListTileKey;
+RWStructuredBuffer<uint> _BinPointListDepthValue;
+RWStructuredBuffer<uint> _BinPointListTileValue;
+RWStructuredBuffer<uint> _BinLeftPointListTileValue;
+RWStructuredBuffer<uint> _BinRightPointListTileValue;
+RWStructuredBuffer<uint2> _ImageRange;
+RWStructuredBuffer<uint2> _ImageLeftRange;
+RWStructuredBuffer<uint2> _ImageRightRange;
+int _NumRendered;
+float4 _TileConfig;
+int _IterIndex;
+
+RWStructuredBuffer<uint> _SplatSortDistances;
+RWStructuredBuffer<uint> _SplatSortKeys;
+uint _SplatCount;
+
+// radix sort etc. friendly, see http://stereopsis.com/radix.html
+uint FloatToSortableUint(float f)
+{
+    uint fu = asuint(f);
+    uint mask = -((int)(fu >> 31)) | 0x80000000;
+    return fu ^ mask;
+}
+
+[numthreads(GROUP_SIZE,1,1)]
+void CSSetIndices (uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= _SplatCount)
+        return;
+
+    _SplatSortKeys[idx] = idx;
+}
+
+[numthreads(GROUP_SIZE,1,1)]
+void CSCalcDistances (uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= _SplatCount)
+        return;
+
+    uint origIdx = _SplatSortKeys[idx];
+
+    float3 pos = LoadSplatPos(origIdx);
+    pos = mul(_MatrixMV, float4(pos.xyz, 1)).xyz;
+
+    _SplatSortDistances[idx] = FloatToSortableUint(pos.z);
+}
+
+RWStructuredBuffer<SplatViewData> _SplatViewData;
+
+float _SplatScale;
+float _SplatOpacityScale;
+uint _SHOrder;
+uint _SHOnly;
+
+uint _SplatCutoutsCount;
+
+#define SPLAT_CUTOUT_TYPE_ELLIPSOID 0
+#define SPLAT_CUTOUT_TYPE_BOX 1
+
+struct GaussianCutoutShaderData // match GaussianCutout.ShaderData in C#
+{
+    float4x4 mat;
+    uint typeAndFlags;
+};
+StructuredBuffer<GaussianCutoutShaderData> _SplatCutouts;
+
+RWByteAddressBuffer _SplatSelectedBits;
+ByteAddressBuffer _SplatDeletedBits;
+uint _SplatBitsValid;
+
+void DecomposeCovariance(float3 cov2d, out float2 v1, out float2 v2)
+{
+    #if 0 // does not quite give the correct results?
+
+    // https://jsfiddle.net/mattrossman/ehxmtgw6/
+    // References:
+    // - https://www.youtube.com/watch?v=e50Bj7jn9IQ
+    // - https://en.wikipedia.org/wiki/Eigenvalue_algorithm#2%C3%972_matrices
+    // - https://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
+    float a = cov2d.x;
+    float b = cov2d.y;
+    float d = cov2d.z;
+    float det = a * d - b * b; // matrix is symmetric, so "c" is same as "b"
+    float trace = a + d;
+
+    float mean = 0.5 * trace;
+    float dist = sqrt(mean * mean - det);
+
+    float lambda1 = mean + dist; // 1st eigenvalue
+    float lambda2 = mean - dist; // 2nd eigenvalue
+
+    if (b == 0) {
+        // https://twitter.com/the_ross_man/status/1706342719776551360
+        if (a > d) v1 = float2(1, 0);
+        else v1 = float2(0, 1);
+    } else
+        v1 = normalize(float2(b, d - lambda2));
+
+    v1.y = -v1.y;
+    // The 2nd eigenvector is just a 90 degree rotation of the first since Gaussian axes are orthogonal
+    v2 = float2(v1.y, -v1.x);
+
+    // scaling components
+    v1 *= sqrt(lambda1);
+    v2 *= sqrt(lambda2);
+
+    float radius = 1.5;
+    v1 *= radius;
+    v2 *= radius;
+
+    #else
+
+    // same as in antimatter15/splat
+    float diag1 = cov2d.x, diag2 = cov2d.z, offDiag = cov2d.y;
+    float mid = 0.5f * (diag1 + diag2);
+    float radius = length(float2((diag1 - diag2) / 2.0, offDiag));
+    float lambda1 = mid + radius;
+    float lambda2 = max(mid - radius, 0.1);
+    float2 diagVec = normalize(float2(offDiag, lambda1 - diag1));
+    diagVec.y = -diagVec.y;
+    float maxSize = 4096.0;
+    v1 = min(sqrt(2.0 * lambda1), maxSize) * diagVec;
+    v2 = min(sqrt(2.0 * lambda2), maxSize) * float2(diagVec.y, -diagVec.x);
+
+    #endif
+}
+
+bool IsSplatCut(float3 pos)
+{
+    bool finalCut = false;
+    for (uint i = 0; i < _SplatCutoutsCount; ++i)
+    {
+        GaussianCutoutShaderData cutData = _SplatCutouts[i];
+        uint type = cutData.typeAndFlags & 0xFF;
+        if (type == 0xFF) // invalid/null cutout, ignore
+            continue;
+        bool invert = (cutData.typeAndFlags & 0xFF00) != 0;
+
+        float3 cutoutPos = mul(cutData.mat, float4(pos, 1)).xyz;
+        if (type == SPLAT_CUTOUT_TYPE_ELLIPSOID)
+        {
+            if (dot(cutoutPos, cutoutPos) <= 1) return invert;
+        }
+        if (type == SPLAT_CUTOUT_TYPE_BOX)
+        {
+            if (all(abs(cutoutPos) <= 1)) return invert;
+        }
+        finalCut |= !invert;
+    }
+    return finalCut;
+}
+
+[numthreads(GROUP_SIZE,1,1)]
+void CSCalcViewData (uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= _SplatCount)
+        return;
+
+    SplatData splat = LoadSplatData(idx);
+    SplatViewData view = (SplatViewData)0;
+    
+    float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(splat.pos,1)).xyz;
+    float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
+    half opacityScale = _SplatOpacityScale;
+    float splatScale = _SplatScale;
+
+    // deleted?
+    if (_SplatBitsValid)
+    {
+        uint wordIdx = idx / 32;
+        uint bitIdx = idx & 31;
+        uint wordVal = _SplatDeletedBits.Load(wordIdx * 4);
+        if (wordVal & (1 << bitIdx))
+        {
+            centerClipPos.w = 0;
+        }
+    }
+
+    view.pos = centerClipPos;
+    bool behindCam = centerClipPos.w <= 0;
+    if (!behindCam)
+    {
+        float4 boxRot = splat.rot;
+        float3 boxSize = splat.scale;
+
+        float3x3 splatRotScaleMat = CalcMatrixFromRotationScale(boxRot, boxSize);
+
+        float3 cov3d0, cov3d1;
+        CalcCovariance3D(splatRotScaleMat, cov3d0, cov3d1);
+        float splatScale2 = splatScale * splatScale;
+        cov3d0 *= splatScale2;
+        cov3d1 *= splatScale2;
+        float3 cov2d = CalcCovariance2D(splat.pos, cov3d0, cov3d1, _MatrixMV, UNITY_MATRIX_P, _VecScreenParams);
+        
+        DecomposeCovariance(cov2d, view.axis1, view.axis2);
+
+        float3 worldViewDir = _VecWorldSpaceCameraPos.xyz - centerWorldPos;
+        float3 objViewDir = mul((float3x3)_MatrixWorldToObject, worldViewDir);
+        objViewDir = normalize(objViewDir);
+
+        half4 col;
+        col.rgb = ShadeSH(splat.sh, objViewDir, _SHOrder, _SHOnly != 0);
+        col.a = min(splat.opacity * opacityScale, 65000);
+
+        // col.rgb = _GeomData[idx].rgb;
+        // col.a = _GeomData[idx].conic_opacity.w;
+        // col.rgb = half3(1.0, 0.0, 0.0);
+        // col.a = 1.0;
+        view.color.x = (f32tof16(col.r) << 16) | f32tof16(col.g);
+        view.color.y = (f32tof16(col.b) << 16) | f32tof16(col.a);
+    }
+    
+    _SplatViewData[idx] = view;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    SplatData splat;
+    
+    // 计算 view、clip 空间坐标
+    _GeomLeftTouchedTiles[idx] = 0;
+    
+    if (idx >= _SplatCount)
+        return;
+    _GeomData[idx] = (GeomData)0;
+        
+    splat = LoadSplatData(idx);
+    float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(splat.pos,1)).xyz;
+    float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
+    // float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
+    
+    // 视锥体剔除
+    if (!InFrustum(centerClipPos)) return;
+    
+    // 解算 3D 高斯的协方差矩阵
+    half opacityScale = _SplatOpacityScale;
+    float splatScale = _SplatScale;
+    
+    float4 boxRot = splat.rot;
+    float3 boxSize = splat.scale;
+    float3x3 splatRotScaleMat = CalcMatrixFromRotationScale(boxRot, boxSize);
+    float3 cov3d0, cov3d1;
+    CalcCovariance3D(splatRotScaleMat, cov3d0, cov3d1);
+    float splatScale2 = splatScale * splatScale;
+    cov3d0 *= splatScale2;
+    cov3d1 *= splatScale2;
+    
+    // 通过 EWA 方法，投影 3D 高斯到平面上的 2D 高斯
+    float3 cov2d;
+    float3 worldViewDir;
+    float3 conic2d;
+    float radius;
+    float4x4 vm = mul(UNITY_MATRIX_V, _MatrixObjectToWorld);
+    cov2d = CalcCovariance2D(splat.pos, cov3d0, cov3d1, vm, UNITY_MATRIX_P, _VecScreenParams);
+    DecomposeCovariance2DRadius(cov2d, radius, conic2d);
+    worldViewDir = _VecWorldSpaceCameraPos.xyz - centerWorldPos.xyz;
+    
+    
+    // TODO: 这里可以增加一个参数，来剔除半径小于阈值的点
+    if (radius <= 0.0f) return;
+    
+    // 计算该高斯球覆盖的屏幕 tile 范围
+    float2 centerNDCPos = centerClipPos.xy / centerClipPos.w;
+    float2 mean2d = ((centerNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+    float2 rect_min = {
+        clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    };
+    float2 rect_max = {
+        clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    };
+    if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
+        return;
+    
+    // 求解 SH 球谐函数，得到颜色数据
+    float3 objViewDir = mul((float3x3)_MatrixWorldToObject, worldViewDir);
+    objViewDir = normalize(objViewDir);
+    float4 col;
+    col.rgb = ShadeSH(splat.sh, objViewDir, _SHOrder, _SHOnly != 0);
+    col.a = min(splat.opacity * opacityScale, 65000);
+    
+    // 记录数据
+    _GeomData[idx].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
+    _GeomData[idx].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
+    // _GeomData[idx].conic_opacity = centerClipPos;
+    _GeomData[idx].rgb = col;
+    // _GeomData[idx].rgb = float4(1.0, 0.0, 0.0, 1.0);
+    _GeomData[idx].mean2D = mean2d;
+    _GeomData[idx].depth = centerClipPos.w;
+    // _GeomData[idx].depth = centerViewPos.z;
+    _GeomData[idx].radius = radius;
+    _GeomLeftTouchedTiles[idx] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+
+    if (idx >= _SplatCount) return;
+    
+    // uint index = _SinglePassMode == 1 ? idx * 2 + _IterIndex : idx;
+
+    uint index = idx;
+
+    _BinPointListDepthKey[idx] = _GeomData[index].depth;
+    _BinPointListDepthValue[idx] = index;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+
+    if (idx >= _SplatCount) return;
+    
+    uint coll_id = _BinPointListDepthValue[idx];
+
+    // TODO: 注意双目的逻辑，需要处理这里的的 index
+    uint index = coll_id;
+    uint list_index = index / 4;
+    uint data_index = index % 4;
+    int4 tmp = _GeomFirstTouchedTiles[list_index];
+
+    _GeomSecondTouchedTiles[idx] = tmp[data_index];
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+
+    if (idx >= _SplatCount) return;
+    
+    uint index = _BinPointListDepthValue[idx];
+    float radius = _GeomData[index].radius;
+    int2 rect_min = int2(_GeomData[index].touched_rects.xy);
+    int2 rect_max = int2(_GeomData[index].touched_rects.zw);
+
+    if (radius > 0.0f && (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
+    {
+        // int off = idx == 0 ? 0 : _GeomPointOffset[idx - 1];
+        // _GeomPointOffset 需要按照 int4 进行处理
+
+        uint list_index = (idx - 1) / 4;
+        uint data_index = (idx - 1) % 4;
+        uint4 tmp = _GeomPointOffset[list_index];
+        uint off = idx == 0 ? 0 : tmp[data_index];
+        
+        for (int y = rect_min.y; y < rect_max.y; y++)
+        {
+            for (int x = rect_min.x; x < rect_max.x; x++)
+            {
+                uint tile_key = y * _TileConfig.z + x;
+                _BinPointListTileKey[off] = tile_key;
+                _BinPointListTileValue[off] = index;
+                off++;
+            }
+        }
+    }
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+    if (idx >= _NumRendered) return;
+
+    uint currtile = _BinPointListTileKey[idx];
+    if (idx == 0)
+    {
+        _ImageRange[currtile].x = 0;
+    }
+    else
+    {
+        uint prevtile = _BinPointListTileKey[idx - 1];
+        if (currtile != prevtile)
+        {
+            _ImageRange[prevtile].y = idx;
+            _ImageRange[currtile].x = idx;
+        }
+    }
+
+    if (idx == _NumRendered - 1)
+    {
+        _ImageRange[currtile].y = _NumRendered;
+    }
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+
+    if (idx >= _NumRendered) return;
+    _ImageRange[idx] = (uint2)0;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
+{
+    uint idx = global_id.x;
+    _ImageRightRange[idx] = (uint2)0;
+    if (idx >= _NumRendered) return;
+    
+    _ImageRightRange[idx].x = ((_ImageLeftRange[idx].y - _ImageLeftRange[idx].x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    _ImageRightRange[idx].y = idx;
+}
+
+// 声明计算中需要使用的 threadgroup memory（也就是 share memory）
+// 如果太大，可以把使用频率低的部分，仍然保存在 global memory 上
+// groupshared int collected_id[BLOCK_SIZE];
+groupshared float collected_depth[BLOCK_SIZE];
+groupshared float2 collected_xy[BLOCK_SIZE];
+groupshared float4 collected_conic_opacity[BLOCK_SIZE];
+groupshared float4 collected_color[BLOCK_SIZE];
+
+RWTexture2D<float4> _GSRenderTexture;
+
+[numthreads(BLOCK_X, BLOCK_Y, 1)]
+void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID, uint group_index : SV_GroupIndex)
+{
+    float W = _VecScreenParams.x;
+    float H = _VecScreenParams.y;
+    uint horizontal_blocks = (uint)((W + BLOCK_X - 1) / BLOCK_X);
+    
+    if (global_id.x < W && global_id.y < H)
+    {
+        // 计算迭代次数
+        uint2 range = _ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
+
+        // 对非法值进行剔除，非法值包括：
+        // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
+        // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 
+        if (range.x >= _NumRendered || range.y >= _NumRendered)
+            return;
+
+        // if (rounds < 10)
+        // {
+        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 0.0, 1.0, 1.0);
+        // }
+        // else if (rounds < 100)
+        // {
+        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 1.0, 0.0, 1.0);
+        // }
+        // else
+        // {
+        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(1.0, 1.0, 1.0, 1.0);
+        // }
+        
+        int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        int toDo = range.y - range.x;
+
+        if (rounds > 100)
+            return;
+
+        
+        
+        // 累计透明度、颜色和深度图输出
+        float T = 1.0f;
+        float4 color = 0.0f;
+        float inv_depth = 0.0f;
+        
+        for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+        {
+            // 把 global meomry 的数据，加载到 share memory 上
+            int progress = i * BLOCK_SIZE + group_index;
+            if (range.x + progress < range.y)
+            {
+                int coll_id = _BinLeftPointListTileValue[range.x + progress];
+                // collected_id[group_index] = coll_id;
+                collected_depth[group_index] = _GeomData[coll_id].depth;
+                collected_xy[group_index] = _GeomData[coll_id].mean2D;
+                collected_conic_opacity[group_index] = _GeomData[coll_id].conic_opacity;
+                collected_color[group_index] = _GeomData[coll_id].rgb;
+            }
+            GroupMemoryBarrierWithGroupSync();
+        
+            // 遍历 Tile 中保存的高斯数据
+            // 每个 thread 负责一个像素，逐像素累计高斯数据
+            bool done = false;
+            for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+            {
+                // int coll_id = collected_id[j];
+                // 根据像素到 2D 高斯中心点的距离，计算衰减度
+                float2 xy = collected_xy[j];
+                // float2 xy = _GeomData[coll_id].mean2D;
+                float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
+                float4 con_o = collected_conic_opacity[j];
+                // float4 con_o = _GeomData[coll_id].conic_opacity;
+                float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+                if (power > 0.0f)
+                    continue;
+                
+                // 计算 alpha 透明度
+                float alpha = min(0.99f, con_o.w * exp(power));
+                if (alpha < 1.0f / 255.0f)
+                    continue;
+                float test_T = T * (1 - alpha);
+                if (test_T < 0.0001f)
+                {
+                    done = true;
+                    continue;
+                }
+                
+                // 累加颜色
+                color += collected_color[j] * alpha * T;
+                // color += _GeomData[coll_id].rgb * alpha * T;
+                
+                // 累加深度
+                inv_depth += (1 / collected_depth[j]) * alpha * T;
+                // inv_depth += (1 / _GeomData[coll_id].depth) * alpha * T;
+                
+                // 更新累积 alpha
+                T = test_T;
+            }
+        }
+        
+        _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(pow(color.xyz, 2.2), T);
+        // _GSRenderTexture[global_id.xy] = float4(color.xyz, T);
+    }
+}

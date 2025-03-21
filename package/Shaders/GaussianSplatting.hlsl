@@ -2,6 +2,55 @@
 #ifndef GAUSSIAN_SPLATTING_HLSL
 #define GAUSSIAN_SPLATTING_HLSL
 
+#define BLOCK_X 16
+#define BLOCK_Y 16
+#define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
+
+bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float3 conic2d)
+{
+    // does not quite give the correct results?
+
+    // https://jsfiddle.net/mattrossman/ehxmtgw6/
+    // References:
+    // - https://www.youtube.com/watch?v=e50Bj7jn9IQ
+    // - https://en.wikipedia.org/wiki/Eigenvalue_algorithm#2%C3%972_matrices
+    // - https://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
+    float a = cov2d.x;
+    float b = cov2d.y;
+    float d = cov2d.z;
+    float det = a * d - b * b; // matrix is symmetric, so "c" is same as "b"
+    if (det == 0.0f) return false;
+
+    float det_inv = 1.0f / det;
+    conic2d = float3(cov2d.z * det_inv, -cov2d.y * det_inv, cov2d.x * det_inv);
+    // TODO: 通过除以 det，可以添加抗锯齿效果
+    
+    float trace = a + d;
+    float mean = 0.5 * trace;
+    float dist = sqrt(mean * mean - det);
+
+    float lambda1 = mean + dist; // 1st eigenvalue
+    float lambda2 = mean - dist; // 2nd eigenvalue
+
+    radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+    return true;
+}
+
+bool InFrustum(float4 clipPos)
+{
+    float cull_scale = 1.3;
+    float inv_clip_w = 1.0f / clipPos.w;
+    // TODO: viewPos.z 是否可以通过 clipPos.w 得到【可以，两者之间是乘以1个负号的关系】
+    // TODO: 验证视锥体范围内点的 Z 值到底是正还是负【viewPos 的正值】
+    if (clipPos.w <= 0.2f
+        || clipPos.x * inv_clip_w > cull_scale
+        || clipPos.x * inv_clip_w < -1 * cull_scale
+        || clipPos.y * inv_clip_w > cull_scale
+        || clipPos.y * inv_clip_w < -1 * cull_scale
+        ) return false;
+    return true;
+}
+
 float InvSquareCentered01(float x)
 {
     x -= 0.5;
