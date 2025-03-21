@@ -556,8 +556,6 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
         if (rounds > 100)
             return;
-
-        
         
         // 累计透明度、颜色和深度图输出
         float T = 1.0f;

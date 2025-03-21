@@ -157,6 +157,7 @@ namespace GaussianSplatting.Runtime
         bool m_Registered;
 
         private int m_PreTileX, m_PreTileY;
+        private int m_NumRendered;
 
         static readonly ProfilerMarker s_ProfSort = new(ProfilerCategory.Render, "GaussianSplat.Sort", MarkerFlags.SampleGPU);
 
@@ -333,6 +334,10 @@ namespace GaussianSplatting.Runtime
                 { name = "BinStateLeftDepthKeyData" };
             m_BinState_left_point_list_depth_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 4)
                 { name = "BinStateLeftDepthValueData" };
+            m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * 20, 4)
+                { name = "BinStateLeftTileKeyData" };
+            m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * 20, 4)
+                { name = "BinStateLeftTileValueData" };
 
         }
 
@@ -649,8 +654,8 @@ namespace GaussianSplatting.Runtime
                 return;
             
             // 1. 销毁分配的 GraphicsBuffer
-            DisposeBuffer(ref m_BinState_left_point_list_tile_keys);
-            DisposeBuffer(ref m_BinState_left_point_list_tile_values);
+            // DisposeBuffer(ref m_BinState_left_point_list_tile_keys);
+            // DisposeBuffer(ref m_BinState_left_point_list_tile_values);
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
             {
@@ -717,17 +722,25 @@ namespace GaussianSplatting.Runtime
             int list_index = splat_count / 4;
             int data_index = splat_count % 4;
             m_GeomState_left_point_offsets.GetData(number_rendered_list, 0, list_index, 1);
-            var number_rendered = number_rendered_list[0].GetElement(data_index);
+            // var number_rendered = number_rendered_list[0].GetElement(data_index);
+            //
+            // if (number_rendered <= 0 || number_rendered >= 536870912)
+            // {
+            //     number_rendered = 1;
+            // }
+            m_NumRendered = number_rendered_list[0].GetElement(data_index);
 
-            if (number_rendered <= 0 || number_rendered >= 536870912)
+            if (m_NumRendered <= 0 || m_NumRendered >= 536870912)
             {
-                number_rendered = 1;
+                m_NumRendered = 1;
             }
+
+            m_NumRendered = Math.Min(m_NumRendered, m_SplatCount * 20);
             
-            m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-                { name = "BinStateLeftTileKeyData" };
-            m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-                { name = "BinStateLeftTileValueData" };
+            // m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
+            //     { name = "BinStateLeftTileKeyData" };
+            // m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
+            //     { name = "BinStateLeftTileValueData" };
             
             
             // 7. 构造第二次排序的 key【tilekey】 和 value【coll_id】
@@ -761,7 +774,8 @@ namespace GaussianSplatting.Runtime
             // 8. 第二次基数排序
             m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
             m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
-            m_SecondRadixSorterArgs.count = (uint)number_rendered;
+            // m_SecondRadixSorterArgs.count = (uint)number_rendered;
+            m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
             if (m_Sorter.Valid)
             {
                 // 初始化第一遍的基数排序
@@ -775,7 +789,8 @@ namespace GaussianSplatting.Runtime
                 EnsureImageState(cam);
                 {
                     // Debug.Log("number_rendered: " + number_rendered);
-                    cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, number_rendered);
+                    // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, number_rendered);
+                    cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.BinPointListTileKey, m_BinState_left_point_list_tile_keys);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
@@ -783,7 +798,8 @@ namespace GaussianSplatting.Runtime
                 
                     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.IdentifyTileRanges, out uint gsX,
                         out _, out _);
-                    int count = (number_rendered + (int)gsX - 1) / (int)gsX;
+                    // int count = (number_rendered + (int)gsX - 1) / (int)gsX;
+                    int count = (m_NumRendered + (int)gsX - 1) / (int)gsX;
                     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         count, 1, 1);
                 }
@@ -843,7 +859,8 @@ namespace GaussianSplatting.Runtime
                 Props.BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
             //     Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
-            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_BinState_left_point_list_tile_values.count);
+            // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_BinState_left_point_list_tile_values.count);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
 
 
             // 设定 ImageState 的数据

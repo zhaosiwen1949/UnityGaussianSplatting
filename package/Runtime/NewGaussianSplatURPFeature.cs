@@ -23,62 +23,6 @@ namespace GaussianSplatting.Runtime
     // ReSharper disable once InconsistentNaming
     class NewGaussianSplatURPFeature : ScriptableRendererFeature
     {
-        class SharedHandle
-        {
-            public BufferHandle m_GeomStateBuffer;
-        }
-        
-        class PreProcessRenderPass : ScriptableRenderPass
-        {
-            const string ProfilerTag = "GaussianSplatPreProcess";
-            static readonly ProfilingSampler s_profilingSampler = new(ProfilerTag);
-            internal static readonly ProfilerMarker s_ProfSampler = new(ProfilerCategory.Render, "GSPass.PreProcess", MarkerFlags.SampleGPU);
-            
-            private SharedHandle m_sharedHandle;
-
-            public void SetShareHandle(SharedHandle sharedHandle)
-            {
-                m_sharedHandle = sharedHandle;
-            }
-            
-            class PassData
-            {
-                internal UniversalCameraData CameraData;
-                internal BufferHandle GeomStateData;
-                internal NewGaussianSplatRenderer GSRenderer;
-            }
-            
-            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
-            {
-                // using var builder = renderGraph.AddUnsafePass(ProfilerTag, out PassData passData);
-                // var cameraData = frameData.Get<UniversalCameraData>();
-                //
-                // BufferDesc geomStateDesc = new BufferDesc
-                // {
-                //     count = NewGaussianSplatRenderSystem.instance.GetFirstRenderer().splatCount,
-                //     stride = 16 * 4,
-                //     target = GraphicsBuffer.Target.Structured,
-                //     name = "GSStateBuffer"
-                // };
-                // m_sharedHandle.m_GeomStateBuffer = renderGraph.CreateBuffer(geomStateDesc);
-                //
-                // passData.CameraData = cameraData;
-                // passData.GeomStateData = m_sharedHandle.m_GeomStateBuffer;
-                // passData.GSRenderer = NewGaussianSplatRenderSystem.instance.GetFirstRenderer();
-                //
-                // builder.UseBuffer(m_sharedHandle.m_GeomStateBuffer, AccessFlags.Write);
-                // builder.AllowPassCulling(false);
-                // builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
-                // {
-                //     var commandBuffer = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
-                //     using var _ = new ProfilingScope(commandBuffer, s_profilingSampler);
-                //     commandBuffer.BeginSample(s_ProfSampler);
-                //     data.GSRenderer.PreProcessViewData(commandBuffer, data.CameraData.camera, data.GeomStateData);
-                //     commandBuffer.EndSample(s_ProfSampler);
-                // });
-            }
-        }
-        
         class NewGSRenderPass : ScriptableRenderPass
         {
             const string GaussianSplatRTName = "_GaussianSplatRT";
@@ -86,13 +30,6 @@ namespace GaussianSplatting.Runtime
             const string ProfilerTag = "GaussianSplatRenderGraph";
             static readonly ProfilingSampler s_profilingSampler = new(ProfilerTag);
             static readonly int s_gaussianSplatRT = Shader.PropertyToID(GaussianSplatRTName);
-            
-            private SharedHandle m_sharedHandle;
-
-            public void SetShareHandle(SharedHandle sharedHandle)
-            {
-                m_sharedHandle = sharedHandle;
-            }
             
             class PassData
             {
@@ -146,27 +83,15 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        PreProcessRenderPass m_PreProcessRenderPass;
         NewGSRenderPass m_Pass;
         bool m_HasCamera;
 
-        SharedHandle m_sharedHandle;
-
         public override void Create()
         {
-            m_sharedHandle = new SharedHandle();
-            
-            // m_PreProcessRenderPass = new PreProcessRenderPass
-            // {
-            //     renderPassEvent = RenderPassEvent.BeforeRenderingTransparents
-            // };
-            // m_PreProcessRenderPass.SetShareHandle(m_sharedHandle);
-            
-            m_Pass = new NewGSRenderPass
+           m_Pass = new NewGSRenderPass
             {
                 renderPassEvent = RenderPassEvent.BeforeRenderingTransparents
             };
-            m_Pass.SetShareHandle(m_sharedHandle);
         }
 
         public override void OnCameraPreCull(ScriptableRenderer renderer, in CameraData cameraData)
@@ -183,7 +108,6 @@ namespace GaussianSplatting.Runtime
         {
             if (!m_HasCamera)
                 return;
-            // renderer.EnqueuePass(m_PreProcessRenderPass);
             renderer.EnqueuePass(m_Pass);
         }
 
