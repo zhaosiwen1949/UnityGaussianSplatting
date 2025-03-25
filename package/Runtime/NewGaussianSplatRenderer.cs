@@ -664,12 +664,6 @@ namespace GaussianSplatting.Runtime
             int count = (m_SplatCount * splatCountScale + (int)gsX - 1) / (int)gsX;
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
                 count, 1, 1);
-            // var fence = cmb.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.ComputeProcessing);
-            // cmb.WaitOnAsyncGraphicsFence(fence);
-
-            // GemoData[] gemoData = new GemoData[m_GeomState_data.count];
-            // m_GeomState_data.GetData(gemoData);
-            // Debug.Log(gemoData[0].rgb);
         }
 
         internal void RadixSortPoints(CommandBuffer cmb, Camera cam)
