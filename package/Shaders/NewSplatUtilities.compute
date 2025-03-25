@@ -354,6 +354,9 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float radius;
     float4x4 vm = mul(UNITY_MATRIX_V, _MatrixObjectToWorld);
     cov2d = CalcCovariance2D(splat.pos, cov3d0, cov3d1, vm, UNITY_MATRIX_P, _VecScreenParams);
+    const float det_cov_plus_h_cov = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
+    const float det_cov = (cov2d.x - 0.3f) * (cov2d.z - 0.3f) - cov2d.y * cov2d.y;
+    float h_convolution_scaling = sqrt(max(0.000025f, det_cov / det_cov_plus_h_cov));
     DecomposeCovariance2DRadius(cov2d, radius, conic2d);
     worldViewDir = _VecWorldSpaceCameraPos.xyz - centerWorldPos.xyz;
     
@@ -380,7 +383,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     objViewDir = normalize(objViewDir);
     float4 col;
     col.rgb = ShadeSH(splat.sh, objViewDir, _SHOrder, _SHOnly != 0);
-    col.a = min(splat.opacity * opacityScale, 65000);
+    col.a = min(splat.opacity * opacityScale * h_convolution_scaling, 65000);
     
     // 记录数据
     _GeomData[idx].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
@@ -513,10 +516,106 @@ void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
 // 声明计算中需要使用的 threadgroup memory（也就是 share memory）
 // 如果太大，可以把使用频率低的部分，仍然保存在 global memory 上
 // groupshared int collected_id[BLOCK_SIZE];
-groupshared float collected_depth[BLOCK_SIZE];
-groupshared float2 collected_xy[BLOCK_SIZE];
-groupshared float4 collected_conic_opacity[BLOCK_SIZE];
-groupshared float4 collected_color[BLOCK_SIZE];
+// groupshared float collected_depth[BLOCK_SIZE];
+// groupshared float2 collected_xy[BLOCK_SIZE];
+// groupshared float4 collected_conic_opacity[BLOCK_SIZE];
+// groupshared float4 collected_color[BLOCK_SIZE];
+//
+// RWTexture2D<float4> _GSRenderTexture;
+//
+// [numthreads(BLOCK_X, BLOCK_Y, 1)]
+// void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID, uint group_index : SV_GroupIndex)
+// {
+//     float W = _VecScreenParams.x;
+//     float H = _VecScreenParams.y;
+//     uint horizontal_blocks = (uint)((W + BLOCK_X - 1) / BLOCK_X);
+//     
+//     if (global_id.x < W && global_id.y < H)
+//     {
+//         // 计算迭代次数
+//         uint2 range = _ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
+//
+//         // 对非法值进行剔除，非法值包括：
+//         // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
+//         // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 
+//         // if (range.x >= _NumRendered || range.y >= _NumRendered)
+//         //     return;
+//         
+//         int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+//         int toDo = range.y - range.x;
+//         
+//         if (rounds > 100)
+//             return;
+//         
+//         // 累计透明度、颜色和深度图输出
+//         float T = 1.0f;
+//         float4 color = 0.0f;
+//         float inv_depth = 0.0f;
+//         
+//         for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+//         {
+//             // 把 global meomry 的数据，加载到 share memory 上
+//             int progress = i * BLOCK_SIZE + group_index;
+//             if (range.x + progress < range.y)
+//             {
+//                 int coll_id = _BinLeftPointListTileValue[range.x + progress];
+//                 collected_id[group_index] = coll_id;
+//                 collected_depth[group_index] = _GeomData[coll_id].depth;
+//                 collected_xy[group_index] = _GeomData[coll_id].mean2D;
+//                 collected_conic_opacity[group_index] = _GeomData[coll_id].conic_opacity;
+//                 collected_color[group_index] = _GeomData[coll_id].rgb;
+//             }
+//             // GroupMemoryBarrier();
+//             GroupMemoryBarrierWithGroupSync();
+//         
+//             // 遍历 Tile 中保存的高斯数据
+//             // 每个 thread 负责一个像素，逐像素累计高斯数据
+//             bool done = false;
+//             for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+//             {
+//                 int coll_id = collected_id[j];
+//                 // 根据像素到 2D 高斯中心点的距离，计算衰减度
+//                 float2 xy = collected_xy[j];
+//                 // float2 xy = _GeomData[coll_id].mean2D;
+//                 
+//                 
+//                 float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
+//                 
+//                 float4 con_o = collected_conic_opacity[j];
+//                 // float4 con_o = _GeomData[coll_id].conic_opacity;
+//                 float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+//                 // if (power > 0.0f)
+//                 //     continue;
+//                 
+//                 // 计算 alpha 透明度
+//                 float alpha = min(0.99f, con_o.w * exp(power));
+//                 // if (alpha < 1.0f / 255.0f)
+//                 //     continue;
+//                 
+//                 float test_T = T * (1 - alpha);
+//                 // // if (test_T < 0.0000001f)
+//                 // // {
+//                 // //     done = true;
+//                 // //     continue;
+//                 // // }
+//                 
+//                 // 累加颜色
+//                 color += collected_color[j] * alpha * T;
+//                 // color += _GeomData[coll_id].rgb * alpha * T;
+//                 
+//                 // // 累加深度
+//                 // inv_depth += (1 / collected_depth[j]) * alpha * T;
+//                 // // inv_depth += (1 / _GeomData[coll_id].depth) * alpha * T;
+//                 //
+//                 // // 更新累积 alpha
+//                 T = test_T;
+//             }
+//         }
+//         
+//         _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(pow(color.xyz, 2.2), 1.0 - T);
+//         // _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 0.0, 1.0, 1.0);
+//     }
+// }
 
 RWTexture2D<float4> _GSRenderTexture;
 
@@ -537,87 +636,59 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 
         if (range.x >= _NumRendered || range.y >= _NumRendered)
             return;
-
-        // if (rounds < 10)
-        // {
-        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 0.0, 1.0, 1.0);
-        // }
-        // else if (rounds < 100)
-        // {
-        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 1.0, 0.0, 1.0);
-        // }
-        // else
-        // {
-        //     _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(1.0, 1.0, 1.0, 1.0);
-        // }
         
         int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
         int toDo = range.y - range.x;
-
+        
         if (rounds > 100)
             return;
         
         // 累计透明度、颜色和深度图输出
         float T = 1.0f;
         float4 color = 0.0f;
-        float inv_depth = 0.0f;
-        
-        for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+
+        // 遍历 Tile 中保存的高斯数据
+        // 每个 thread 负责一个像素，逐像素累计高斯数据
+
+        bool done = false;
+        for (int j = 0; !done && j < toDo; j++)
         {
-            // 把 global meomry 的数据，加载到 share memory 上
-            int progress = i * BLOCK_SIZE + group_index;
-            if (range.x + progress < range.y)
+            int coll_id = _BinLeftPointListTileValue[range.x + j];
+            // 根据像素到 2D 高斯中心点的距离，计算衰减度
+            float2 xy = _GeomData[coll_id].mean2D;
+
+
+            float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
+
+            float4 con_o = _GeomData[coll_id].conic_opacity;
+            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+            if (power > 0.0f)
+                continue;
+
+            // 计算 alpha 透明度
+            float alpha = min(0.99f, con_o.w * exp(power));
+            if (alpha < 1.0f / 255.0f)
+                continue;
+
+            float test_T = T * (1 - alpha);
+            if (test_T < 0.0000001f)
             {
-                int coll_id = _BinLeftPointListTileValue[range.x + progress];
-                // collected_id[group_index] = coll_id;
-                collected_depth[group_index] = _GeomData[coll_id].depth;
-                collected_xy[group_index] = _GeomData[coll_id].mean2D;
-                collected_conic_opacity[group_index] = _GeomData[coll_id].conic_opacity;
-                collected_color[group_index] = _GeomData[coll_id].rgb;
+                done = true;
+                continue;
             }
-            GroupMemoryBarrierWithGroupSync();
-        
-            // 遍历 Tile 中保存的高斯数据
-            // 每个 thread 负责一个像素，逐像素累计高斯数据
-            bool done = false;
-            for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
-            {
-                // int coll_id = collected_id[j];
-                // 根据像素到 2D 高斯中心点的距离，计算衰减度
-                float2 xy = collected_xy[j];
-                // float2 xy = _GeomData[coll_id].mean2D;
-                float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
-                float4 con_o = collected_conic_opacity[j];
-                // float4 con_o = _GeomData[coll_id].conic_opacity;
-                float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-                if (power > 0.0f)
-                    continue;
-                
-                // 计算 alpha 透明度
-                float alpha = min(0.99f, con_o.w * exp(power));
-                if (alpha < 1.0f / 255.0f)
-                    continue;
-                float test_T = T * (1 - alpha);
-                if (test_T < 0.0001f)
-                {
-                    done = true;
-                    continue;
-                }
-                
-                // 累加颜色
-                color += collected_color[j] * alpha * T;
-                // color += _GeomData[coll_id].rgb * alpha * T;
-                
-                // 累加深度
-                inv_depth += (1 / collected_depth[j]) * alpha * T;
-                // inv_depth += (1 / _GeomData[coll_id].depth) * alpha * T;
-                
-                // 更新累积 alpha
-                T = test_T;
-            }
+
+            // 累加颜色
+            color += _GeomData[coll_id].rgb * alpha * T;
+
+            // // 累加深度
+            // inv_depth += (1 / collected_depth[j]) * alpha * T;
+            // // inv_depth += (1 / _GeomData[coll_id].depth) * alpha * T;
+            //
+            // // 更新累积 alpha
+            T = test_T;
         }
         
-        _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(pow(color.xyz, 2.2), T);
-        // _GSRenderTexture[global_id.xy] = float4(color.xyz, T);
+        _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(pow(color.xyz, 2.2), 1.0 - T);
+        // _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(0.0, 0.0, 1.0, 1.0);
     }
 }
