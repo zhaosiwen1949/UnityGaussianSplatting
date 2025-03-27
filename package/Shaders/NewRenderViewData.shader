@@ -1,7 +1,5 @@
 Shader "Gaussian Splatting/NewRenderViewData"
 {
-    
-    
     SubShader
     {
         Pass

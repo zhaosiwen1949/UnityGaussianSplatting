@@ -49,9 +49,9 @@ namespace GaussianSplatting.Runtime
                 // RenderTextureDescriptor rtDesc = cameraData.cameraTargetDescriptor;
                 // rtDesc.depthBufferBits = 0;
                 // rtDesc.msaaSamples = 1;
-                // rtDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-                // // rtDesc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat;
-                // // rtDesc.enableRandomWrite = true;
+                // // rtDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
+                // rtDesc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat;
+                // rtDesc.enableRandomWrite = true;
                 // var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, false);
 
                 passData.CameraData = cameraData;
@@ -82,7 +82,9 @@ namespace GaussianSplatting.Runtime
                     
                     // New Tile 渲染方法
                     // TODO:尝试采用更高精度的 RT
+                    // CoreUtils.SetRenderTarget(commandBuffer, data.SourceTexture, data.SourceDepth, ClearFlag.Color, Color.clear);
                     // NewGaussianSplatRenderSystem.instance.NewTileRenderSplats(data.CameraData.camera, commandBuffer, data.GaussianSplatRT);
+                    CoreUtils.SetRenderTarget(commandBuffer, data.SourceTexture, data.SourceDepth, ClearFlag.Color, Color.clear);
                     NewGaussianSplatRenderSystem.instance.NewTileRenderSplats(data.CameraData.camera, commandBuffer);
                 });
             }
