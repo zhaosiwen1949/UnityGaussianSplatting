@@ -106,7 +106,39 @@ namespace GaussianSplatting.Runtime
         }
 
         // ReSharper disable once MemberCanBePrivate.Global - used by HDRP/URP features that are not always compiled
-
+        // public void NewTileRenderSplats(Camera cam, CommandBuffer cmb, TextureHandle gsRenderTexture)
+        public void NewTileRenderSplats(Camera cam, CommandBuffer cmb)
+        {
+            if (m_ActiveSplats.Count <= 0) return;
+            
+            var kvp = m_ActiveSplats[0];
+            var gs = kvp.Item1;
+            var mpb = kvp.Item2;
+            mpb.Clear();
+            
+            // PreProcess
+            cmb.BeginSample(s_ProfPreProcess);
+            gs.PreProcessViewData(cmb, cam);
+            cmb.EndSample(s_ProfPreProcess);
+                
+            // RadixSort
+            cmb.BeginSample(s_ProfRadixSort);
+            gs.RadixSortPoints(cmb, cam);
+            cmb.EndSample(s_ProfRadixSort);
+            
+            // TileRender
+            // cmb.BeginSample(s_ProfDraw);
+            // gs.RenderViewData(cmb, cam, gsRenderTexture);
+            // cmb.EndSample(s_ProfDraw);
+            
+            // New Tile Render
+            cmb.BeginSample(s_ProfDraw);
+            // gs.NewRenderViewData(cmb, cam, mpb, gsRenderTexture);
+            gs.NewRenderViewData(cmb, cam, mpb);
+            cmb.EndSample(s_ProfDraw);
+        }
+        
+        
         public void TileRenderSplats(Camera cam, CommandBuffer cmb, TextureHandle gsRenderTexture)
         {
             if (m_ActiveSplats.Count <= 0) return;
@@ -182,10 +214,6 @@ namespace GaussianSplatting.Runtime
                 int indexCount = 6;
                 int instanceCount = gs.splatCount;
                 MeshTopology topology = MeshTopology.Triangles;
-                if (gs.m_RenderMode is NewGaussianSplatRenderer.RenderMode.DebugBoxes or NewGaussianSplatRenderer.RenderMode.DebugChunkBounds)
-                    indexCount = 36;
-                if (gs.m_RenderMode == NewGaussianSplatRenderer.RenderMode.DebugChunkBounds)
-                    instanceCount = gs.m_GpuChunksValid ? gs.m_GpuChunks.count : 0;
 
                 cmb.BeginSample(s_ProfDraw);
                 cmb.DrawProcedural(gs.m_GpuIndexBuffer, matrix, displayMat, 0, topology, indexCount, instanceCount, mpb);

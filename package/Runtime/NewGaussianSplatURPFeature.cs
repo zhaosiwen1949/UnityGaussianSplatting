@@ -46,22 +46,22 @@ namespace GaussianSplatting.Runtime
                 var cameraData = frameData.Get<UniversalCameraData>();
                 var resourceData = frameData.Get<UniversalResourceData>();
 
-                RenderTextureDescriptor rtDesc = cameraData.cameraTargetDescriptor;
-                rtDesc.depthBufferBits = 0;
-                rtDesc.msaaSamples = 1;
+                // RenderTextureDescriptor rtDesc = cameraData.cameraTargetDescriptor;
+                // rtDesc.depthBufferBits = 0;
+                // rtDesc.msaaSamples = 1;
                 // rtDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
-                rtDesc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat;
-                rtDesc.enableRandomWrite = true;
-                var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, false);
+                // // rtDesc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat;
+                // // rtDesc.enableRandomWrite = true;
+                // var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, false);
 
                 passData.CameraData = cameraData;
                 passData.SourceTexture = resourceData.activeColorTexture;
                 passData.SourceDepth = resourceData.activeDepthTexture;
-                passData.GaussianSplatRT = textureHandle;
+                // passData.GaussianSplatRT = textureHandle;
 
                 builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
                 builder.UseTexture(resourceData.activeDepthTexture);
-                builder.UseTexture(textureHandle, AccessFlags.Write);
+                // builder.UseTexture(textureHandle, AccessFlags.Write);
                 builder.AllowPassCulling(false);
                 builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
                 {
@@ -75,10 +75,15 @@ namespace GaussianSplatting.Runtime
                     // commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     
                     // Tile 渲染方法
-                    NewGaussianSplatRenderSystem.instance.TileRenderSplats(data.CameraData.camera, commandBuffer, data.GaussianSplatRT);
-                    commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
-                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture);
-                    commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
+                    // NewGaussianSplatRenderSystem.instance.TileRenderSplats(data.CameraData.camera, commandBuffer, data.GaussianSplatRT);
+                    // commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
+                    // Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture);
+                    // commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
+                    
+                    // New Tile 渲染方法
+                    // TODO:尝试采用更高精度的 RT
+                    // NewGaussianSplatRenderSystem.instance.NewTileRenderSplats(data.CameraData.camera, commandBuffer, data.GaussianSplatRT);
+                    NewGaussianSplatRenderSystem.instance.NewTileRenderSplats(data.CameraData.camera, commandBuffer);
                 });
             }
         }

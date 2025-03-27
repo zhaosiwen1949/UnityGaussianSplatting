@@ -5,6 +5,17 @@
 #define BLOCK_X 16
 #define BLOCK_Y 16
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
+#define TEST_ALPHA 0.001
+
+struct GeomData
+{
+    int4 touched_rects;
+    float4 conic_opacity;
+    float4 rgb;
+    float2 mean2D;
+    float depth;
+    float radius;
+};
 
 bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float3 conic2d)
 {

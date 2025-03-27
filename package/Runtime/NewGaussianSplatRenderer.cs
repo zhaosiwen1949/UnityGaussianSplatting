@@ -94,6 +94,7 @@ namespace GaussianSplatting.Runtime
 
         public GaussianCutout[] m_Cutouts;
 
+        public Shader m_ShaderNewRenderViewData;
         public Shader m_ShaderSplats;
         public Shader m_ShaderComposite;
         public Shader m_ShaderDebugPoints;
@@ -112,6 +113,7 @@ namespace GaussianSplatting.Runtime
         internal bool m_GpuChunksValid;
         internal GraphicsBuffer m_GpuView;
         internal GraphicsBuffer m_GpuIndexBuffer;
+        internal GraphicsBuffer m_GpuFullScreenBuffer;
         
         // new tile-renderer needed buffer
         // GeometryState
@@ -146,6 +148,7 @@ namespace GaussianSplatting.Runtime
         private GpuSorting m_SecondRadixSorter;
         private GpuSorting.Args m_SecondRadixSorterArgs;
 
+        internal Material m_MatNewRenderViewData;
         internal Material m_MatSplats;
         internal Material m_MatComposite;
         internal Material m_MatDebugPoints;
@@ -302,6 +305,11 @@ namespace GaussianSplatting.Runtime
                 0, 4, 1, 4, 5, 1,
                 2, 3, 6, 3, 7, 6
             });
+            m_GpuFullScreenBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Index, 3, 2);
+            m_GpuFullScreenBuffer.SetData(new ushort[]
+            {
+                0, 1, 2
+            });
 
             // InitRadixSortBuffers(splatCount);
             InitSortBuffers(splatCount);
@@ -429,13 +437,14 @@ namespace GaussianSplatting.Runtime
                 m_SorterArgs.resources = GpuSorting.SupportResources.Load((uint)count);
         }
 
-        bool resourcesAreSetUp => m_ShaderSplats != null && m_ShaderComposite != null && m_ShaderDebugPoints != null &&
+        bool resourcesAreSetUp => m_ShaderNewRenderViewData != null && m_ShaderSplats != null && m_ShaderComposite != null && m_ShaderDebugPoints != null &&
                                   m_ShaderDebugBoxes != null && m_CSSplatUtilities != null && SystemInfo.supportsComputeShaders;
 
         public void EnsureMaterials()
         {
             if (m_MatSplats == null && resourcesAreSetUp)
             {
+                m_MatNewRenderViewData = new Material(m_ShaderNewRenderViewData) { name = "GaussianNewRenderViewData" };
                 m_MatSplats = new Material(m_ShaderSplats) {name = "GaussianSplats"};
                 m_MatComposite = new Material(m_ShaderComposite) {name = "GaussianClearDstAlpha"};
                 m_MatDebugPoints = new Material(m_ShaderDebugPoints) {name = "GaussianDebugPoints"};
@@ -530,6 +539,7 @@ namespace GaussianSplatting.Runtime
 
             DisposeBuffer(ref m_GpuView);
             DisposeBuffer(ref m_GpuIndexBuffer);
+            DisposeBuffer(ref m_GpuFullScreenBuffer);
             DisposeBuffer(ref m_GpuSortDistances);
             DisposeBuffer(ref m_GpuSortKeys);
 
@@ -907,6 +917,40 @@ namespace GaussianSplatting.Runtime
 
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 count_x, count_y, 1);
+        }
+        
+        // internal void NewRenderViewData(CommandBuffer cmb, Camera cam, MaterialPropertyBlock mpb, TextureHandle gsRenderTexture)
+        internal void NewRenderViewData(CommandBuffer cmb, Camera cam, MaterialPropertyBlock mpb)
+        {
+            if (cam.cameraType == CameraType.Preview)
+                return;
+
+            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
+            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
+            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
+            mpb.SetVector( Props.VecScreenParams, screenPar);
+
+            // 设定 GemoState 的数据
+            mpb.SetBuffer(Props.GeomData,
+                m_GeomState_data);
+
+            // 设定 BinnState 的数据
+            mpb.SetBuffer(Props.BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
+            // mpb.SetBuffer(Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
+            mpb.SetInt(Props.NumRendered, m_NumRendered);
+
+
+            // 设定 ImageState 的数据
+            mpb.SetBuffer(Props.ImageLeftRange, m_ImageState_left_ranges);
+            // mpb.SetBuffer(Props.ImageRightRange, m_ImageState_right_ranges);
+
+            // mpb.SetTexture(Props.GSRenderTexture, gsRenderTexture);
+            
+            int indexCount = 3;
+            int instanceCount = 1;
+            MeshTopology topology = MeshTopology.Triangles;
+            
+            cmb.DrawProcedural(m_GpuFullScreenBuffer, Matrix4x4.identity, m_MatNewRenderViewData, 0, topology, indexCount, instanceCount, mpb);
         }
         
         internal void CalcViewData(CommandBuffer cmb, Camera cam)
