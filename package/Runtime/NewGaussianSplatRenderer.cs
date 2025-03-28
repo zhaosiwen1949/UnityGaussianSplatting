@@ -747,6 +747,7 @@ namespace GaussianSplatting.Runtime
                     m_GeomState_left_point_offsets,
                     m_ThreadBlockReduction);
             }
+            Debug.Log("m_SplatCount: " + m_SplatCount);
             
             // 6. 分配 BinnState 数据
             var number_rendered_list = new Int4Data[1];
@@ -768,6 +769,7 @@ namespace GaussianSplatting.Runtime
             }
 
             m_NumRendered = Math.Min(m_NumRendered, m_SplatCount * 20);
+            Debug.Log("m_NumRendered: " + m_NumRendered);
             
             // m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
             //     { name = "BinStateLeftTileKeyData" };
