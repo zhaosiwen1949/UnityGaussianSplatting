@@ -66,9 +66,9 @@ inline uint getWaveIndex(uint gtid, uint waveSize)
     return gtid / waveSize; //CAUTION, 1D WORKGROUP ONLY!
 }
 
-#include "ReduceThenScan.hlsl"
-#include "DeviceRadixSort.hlsl"
-#include "GaussianSplatting.hlsl"
+#include "NewReduceThenScan.hlsl"
+#include "NewDeviceRadixSort.hlsl"
+#include "NewGaussianSplatting.hlsl"
 #include "UnityCG.cginc"
 
 float4x4 _MatrixObjectToWorld;

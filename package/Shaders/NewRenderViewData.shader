@@ -18,7 +18,7 @@ Shader "Gaussian Splatting/NewRenderViewData"
             #pragma target 4.5
 
             #include "UnityCG.cginc"
-            #include "GaussianSplatting.hlsl"
+            #include "NewGaussianSplatting.hlsl"
 
             float4 _VecScreenParams;
             int _NumRendered;
