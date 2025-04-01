@@ -11,6 +11,7 @@
 #pragma kernel CSIdentifyTileRanges
 #pragma kernel CSInitImageRanges
 #pragma kernel CSCalcRanges
+#pragma kernel CSGetNumRendered
 #pragma kernel CSRenderViewData
 
 // DeviceRadixSort
@@ -78,6 +79,7 @@ float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
 
+RWStructuredBuffer<uint> _VisibleCounts;
 RWStructuredBuffer<GeomData> _GeomData;
 RWStructuredBuffer<int> _GeomLeftTouchedTiles;
 RWStructuredBuffer<int> _GeomRightTouchedTiles;
@@ -503,6 +505,17 @@ void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
     _ImageRightRange[idx].y = idx;
 }
 
+[numthreads(1, 1, 1)]
+void CSGetNumRendered (uint3 global_id : SV_DispatchThreadID)
+{
+    uint id = global_id.x;
+    int idx = _SplatCount - 1;
+    uint list_index = idx / 4;
+    uint data_index = idx % 4;
+    uint4 tmp = _GeomPointOffset[list_index];
+    _VisibleCounts[0] = tmp[data_index];
+}
+
 // 声明计算中需要使用的 threadgroup memory（也就是 share memory）
 // 如果太大，可以把使用频率低的部分，仍然保存在 global memory 上
 // groupshared int collected_id[BLOCK_SIZE];
@@ -619,7 +632,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
     {
         // 计算迭代次数
         uint2 range = _ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
-
+        
         // 对非法值进行剔除，非法值包括：
         // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
         // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 

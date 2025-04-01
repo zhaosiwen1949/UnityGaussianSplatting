@@ -26,19 +26,19 @@ namespace GaussianSplatting.Runtime
     
     struct Int4Data
     {
-        public int x, y, z, w;
+        private int a, b, c, d;
         public int GetElement(int index)
         {
             switch (index)
             {
                 case 0:
-                    return x;
+                    return a;
                 case 1:
-                    return y;
+                    return b;
                 case 2:
-                    return z;
+                    return c;
                 case 3:
-                    return w;
+                    return d;
                 default:
                     return 0;
             }
@@ -47,15 +47,15 @@ namespace GaussianSplatting.Runtime
     
     struct Int2Data
     {
-        public int x, y;
+        private int a, b;
         public int GetElement(int index)
         {
             switch (index)
             {
                 case 0:
-                    return x;
+                    return a;
                 case 1:
-                    return y;
+                    return b;
                 default:
                     return 0;
             }
@@ -116,6 +116,9 @@ namespace GaussianSplatting.Runtime
         internal GraphicsBuffer m_GpuFullScreenBuffer;
         
         // new tile-renderer needed buffer
+        // VisibleCounts
+        internal GraphicsBuffer m_VisibleCounts;
+        
         // GeometryState
         internal GraphicsBuffer m_GeomState_data;
         internal GraphicsBuffer m_GeomState_left_first_touched_tiles;
@@ -185,6 +188,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int SHOrder = Shader.PropertyToID("_SHOrder");
             public static readonly int SHOnly = Shader.PropertyToID("_SHOnly");
             
+            public static readonly int VisibleCounts = Shader.PropertyToID("_VisibleCounts");
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
             public static readonly int GeomLeftTouchedTiles = Shader.PropertyToID("_GeomLeftTouchedTiles");
             public static readonly int GeomRightTouchedTiles = Shader.PropertyToID("_GeomRightTouchedTiles");
@@ -244,7 +248,8 @@ namespace GaussianSplatting.Runtime
             IdentifyTileRanges,
             InitImageRanges,
             CalcRanges,
-            RenderViewData
+            GetNumRendered,
+            RenderViewData,
         }
 
         public bool HasValidAsset =>
@@ -313,6 +318,9 @@ namespace GaussianSplatting.Runtime
 
             // InitRadixSortBuffers(splatCount);
             InitSortBuffers(splatCount);
+            
+            // 初始化 VisibleCounts
+            m_VisibleCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1 ,4) { name = "GaussianSplatVisibleCount" };
             
             // 初始化 GeometryState
             int splatCountScale = 1;
@@ -548,6 +556,7 @@ namespace GaussianSplatting.Runtime
             m_FirstRadixSorterArgs.resources.Dispose();
             m_SecondRadixSorterArgs.resources.Dispose();
 
+            DisposeBuffer(ref m_VisibleCounts);
             DisposeBuffer(ref m_GeomState_data);
             DisposeBuffer(ref m_GeomState_left_first_touched_tiles);
             DisposeBuffer(ref m_GeomState_right_first_touched_tiles);
