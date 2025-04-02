@@ -722,7 +722,8 @@ namespace GaussianSplatting.Runtime
             // 1. 销毁分配的 GraphicsBuffer
             // DisposeBuffer(ref m_BinState_left_point_list_tile_keys);
             // DisposeBuffer(ref m_BinState_left_point_list_tile_values);
-            
+
+            int visibleCount = 2;
             // 1. 获取 VisibleCount
             {
                 m_VisibleCountSumer.PrefixSumInclusive(
@@ -737,16 +738,14 @@ namespace GaussianSplatting.Runtime
                 int list_index = splat_count / 4;
                 int data_index = splat_count % 4;
                 m_VisibleBitOffset.GetData(visiblebit_offset_list, 0, list_index, 1);
-                var visiblebit_count = visiblebit_offset_list[0].GetElement(data_index);
-                Debug.Log($"bitCounts: {visiblebit_count}");
+                visibleCount = Math.Max(visiblebit_offset_list[0].GetElement(data_index), visibleCount);
+                Debug.Log($"bitCounts: {visibleCount}");
+                
+                // uint[] visibleCountList = new uint[1];
+                // m_VisibleCount.GetData(visibleCountList);
+                // Debug.Log($"visibleCounts: {visibleCountList[0]}");
+                Debug.Log("m_SplatCount: " + m_SplatCount);
             }
-            
-            uint[] visibleCountList = new uint[1];
-            m_VisibleCount.GetData(visibleCountList);
-            int visibleCount = Math.Max((int)visibleCountList[0], 2);
-            // int visibleCount = m_SplatCount;
-            Debug.Log($"visibleCounts: {visibleCountList[0]}");
-            Debug.Log("m_SplatCount: " + m_SplatCount);
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
             {
