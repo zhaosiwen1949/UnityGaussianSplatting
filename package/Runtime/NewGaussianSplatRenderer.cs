@@ -250,6 +250,7 @@ namespace GaussianSplatting.Runtime
             InitImageRanges,
             CalcRanges,
             GetNumRendered,
+            SetVisibleCounts,
             RenderViewData,
         }
 
@@ -323,7 +324,7 @@ namespace GaussianSplatting.Runtime
             
             // 初始化 VisibleCounts
             m_VisibleCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1 ,4) { name = "GaussianSplatVisibleCount" };
-            uint[] zero = new uint[] { 0 };
+            uint[] zero = { 0 };
             m_VisibleCounts.SetData(zero);
             
             // 初始化 GeometryState
@@ -375,7 +376,6 @@ namespace GaussianSplatting.Runtime
                 // 设置 ImageState
                 m_ImageState_left_ranges = new GraphicsBuffer(GraphicsBuffer.Target.Structured, tile_x * tile_y, 4 * 2)
                     { name = "ImageStateLeftRangesData" };
-                // m_ImageState_left_ranges.SetData(LeftImageRangeData);
                 m_ImageState_right_ranges = new GraphicsBuffer(GraphicsBuffer.Target.Structured, tile_x * tile_y, 4 * 2)
                     { name = "ImageStateRightRangesData" };
                     
@@ -635,7 +635,11 @@ namespace GaussianSplatting.Runtime
             // calculate view dependent data for each splat
             SetAssetDataOnCS(cmb, KernelIndices.PreProcessViewData);
             
-            // 设定 VisibleCount
+            // 初始化 VisibleCount
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,Props.VisibleCounts, m_VisibleCounts);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,
+                1, 1, 1);
+            
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleCounts, m_VisibleCounts);
             
             // 设定 GemoState 的数据
@@ -705,10 +709,9 @@ namespace GaussianSplatting.Runtime
             uint[] visibleCountsList = new uint[1];
             m_VisibleCounts.GetData(visibleCountsList);
             int visibleCount = Math.Max((int)visibleCountsList[0], 2);
+            // int visibleCount = m_SplatCount;
             Debug.Log($"visibleCounts: {visibleCountsList[0]}");
             Debug.Log("m_SplatCount: " + m_SplatCount);
-            visibleCountsList[0] = 0;
-            m_VisibleCounts.SetData(visibleCountsList);
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
             {

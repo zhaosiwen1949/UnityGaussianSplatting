@@ -12,6 +12,7 @@
 #pragma kernel CSInitImageRanges
 #pragma kernel CSCalcRanges
 #pragma kernel CSGetNumRendered
+#pragma kernel CSSetVisibleCounts
 #pragma kernel CSRenderViewData
 
 // DeviceRadixSort
@@ -518,6 +519,12 @@ void CSGetNumRendered (uint3 global_id : SV_DispatchThreadID)
     uint data_index = idx % 4;
     uint4 tmp = _GeomPointOffset[list_index];
     _VisibleCounts[0] = tmp[data_index];
+}
+
+[numthreads(1, 1, 1)]
+void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
+{
+    _VisibleCounts[0] = 0;
 }
 
 // 声明计算中需要使用的 threadgroup memory（也就是 share memory）
