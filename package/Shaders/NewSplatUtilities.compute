@@ -376,18 +376,22 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float4 col;
     col.rgb = ShadeSH(splat.sh, objViewDir, _SHOrder, _SHOnly != 0);
     col.a = min(splat.opacity * opacityScale * h_convolution_scaling, 65000);
+
+    // 采用原子加，来计算索引位置
+    uint globalWriteIndex;
+    InterlockedAdd(_VisibleCounts[0], 1, globalWriteIndex);
     
     // 记录数据
-    _GeomData[idx].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
-    _GeomData[idx].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
+    _GeomData[globalWriteIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
+    _GeomData[globalWriteIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
     // _GeomData[idx].conic_opacity = centerClipPos;
-    _GeomData[idx].rgb = col;
+    _GeomData[globalWriteIndex].rgb = col;
     // _GeomData[idx].rgb = float4(1.0, 0.0, 0.0, 1.0);
-    _GeomData[idx].mean2D = mean2d;
-    _GeomData[idx].depth = centerClipPos.w;
+    _GeomData[globalWriteIndex].mean2D = mean2d;
+    _GeomData[globalWriteIndex].depth = centerClipPos.w;
     // _GeomData[idx].depth = centerViewPos.z;
-    _GeomData[idx].radius = radius;
-    _GeomLeftTouchedTiles[idx] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
+    _GeomData[globalWriteIndex].radius = radius;
+    _GeomLeftTouchedTiles[globalWriteIndex] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
