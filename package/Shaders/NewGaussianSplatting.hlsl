@@ -2,8 +2,8 @@
 #ifndef GAUSSIAN_SPLATTING_HLSL
 #define GAUSSIAN_SPLATTING_HLSL
 
-#define BLOCK_X 16
-#define BLOCK_Y 16
+#define BLOCK_X 32
+#define BLOCK_Y 32
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define TEST_ALPHA 0.001
 
