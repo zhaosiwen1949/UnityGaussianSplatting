@@ -118,7 +118,9 @@ namespace GaussianSplatting.Runtime
         
         // new tile-renderer needed buffer
         // VisibleCounts
-        internal GraphicsBuffer m_VisibleCounts;
+        internal GraphicsBuffer m_VisibleCount;
+        internal GraphicsBuffer m_VisibleBit;
+        internal GraphicsBuffer m_VisibleBitOffset;
         
         // GeometryState
         internal GraphicsBuffer m_GeomState_data;
@@ -145,6 +147,8 @@ namespace GaussianSplatting.Runtime
 
         GpuSorting m_Sorter;
         GpuSorting.Args m_SorterArgs;
+        private ReduceThenScan m_VisibleCountSumer;
+        private ComputeBuffer m_VisibleCountReduction;
         private ReduceThenScan m_PrefixSumer;
         private ComputeBuffer m_ThreadBlockReduction;
         private GpuSorting m_FirstRadixSorter;
@@ -189,7 +193,8 @@ namespace GaussianSplatting.Runtime
             public static readonly int SHOrder = Shader.PropertyToID("_SHOrder");
             public static readonly int SHOnly = Shader.PropertyToID("_SHOnly");
             
-            public static readonly int VisibleCounts = Shader.PropertyToID("_VisibleCounts");
+            public static readonly int VisibleCount = Shader.PropertyToID("_VisibleCount");
+            public static readonly int VisibleBit = Shader.PropertyToID("_VisibleBit");
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
             public static readonly int GeomLeftTouchedTiles = Shader.PropertyToID("_GeomLeftTouchedTiles");
             public static readonly int GeomRightTouchedTiles = Shader.PropertyToID("_GeomRightTouchedTiles");
@@ -323,9 +328,9 @@ namespace GaussianSplatting.Runtime
             InitSortBuffers(splatCount);
             
             // 初始化 VisibleCounts
-            m_VisibleCounts = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1 ,4) { name = "GaussianSplatVisibleCount" };
+            m_VisibleCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1 ,4) { name = "GaussianSplatVisibleCount" };
             uint[] zero = { 0 };
-            m_VisibleCounts.SetData(zero);
+            m_VisibleCount.SetData(zero);
             
             // 初始化 GeometryState
             int splatCountScale = 1;
@@ -349,6 +354,8 @@ namespace GaussianSplatting.Runtime
                 { name = "GeomStateLeftPointOffsetData" };
             m_GeomState_right_point_offsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
                 { name = "GeomStateRightPointOffsetData" };
+            m_VisibleBit = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count , 4 * 4) { name = "GaussianSplatVisibleBit" };
+            m_VisibleBitOffset = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count , 4 * 4) { name = "GaussianSplatVisibleBitOffset" };
             
             // BinState 中深度排序的部分，和点云点数保持相同
             m_BinState_left_point_list_depth_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 4)
@@ -397,6 +404,13 @@ namespace GaussianSplatting.Runtime
         
         void InitRadixSortBuffers(int splatCount)
         {
+            // 初始化计算 VisibleCount 的前缀和算法
+            DisposeBuffer(ref m_VisibleCountReduction);
+            m_VisibleCountSumer = new ReduceThenScan(
+                m_CSSplatUtilities,
+                splatCount + 2048,
+                ref m_VisibleCountReduction);
+            
             // 初始化前缀和算法
             DisposeBuffer(ref m_ThreadBlockReduction);
             m_PrefixSumer = new ReduceThenScan(
@@ -557,10 +571,13 @@ namespace GaussianSplatting.Runtime
 
             m_SorterArgs.resources.Dispose();
             DisposeBuffer(ref m_ThreadBlockReduction);
+            DisposeBuffer(ref m_VisibleCountReduction);
             m_FirstRadixSorterArgs.resources.Dispose();
             m_SecondRadixSorterArgs.resources.Dispose();
 
-            DisposeBuffer(ref m_VisibleCounts);
+            DisposeBuffer(ref m_VisibleCount);
+            DisposeBuffer(ref m_VisibleBit);
+            DisposeBuffer(ref m_VisibleBitOffset);
             DisposeBuffer(ref m_GeomState_data);
             DisposeBuffer(ref m_GeomState_left_first_touched_tiles);
             DisposeBuffer(ref m_GeomState_right_first_touched_tiles);
@@ -636,11 +653,12 @@ namespace GaussianSplatting.Runtime
             SetAssetDataOnCS(cmb, KernelIndices.PreProcessViewData);
             
             // 初始化 VisibleCount
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,Props.VisibleCounts, m_VisibleCounts);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,Props.VisibleCount, m_VisibleCount);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,
                 1, 1, 1);
-            
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleCounts, m_VisibleCounts);
+            // 设置 VisibleCount 和 VisibleBit
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleCount, m_VisibleCount);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleBit, m_VisibleBit);
             
             // 设定 GemoState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
@@ -706,11 +724,28 @@ namespace GaussianSplatting.Runtime
             // DisposeBuffer(ref m_BinState_left_point_list_tile_values);
             
             // 1. 获取 VisibleCount
-            uint[] visibleCountsList = new uint[1];
-            m_VisibleCounts.GetData(visibleCountsList);
-            int visibleCount = Math.Max((int)visibleCountsList[0], 2);
+            {
+                m_VisibleCountSumer.PrefixSumInclusive(
+                    cmb,
+                    m_SplatCount,
+                    m_VisibleBit,
+                    m_VisibleBitOffset,
+                    m_VisibleCountReduction);
+                
+                var visiblebit_offset_list = new Int4Data[1];
+                int splat_count = m_SplatCount - 1;
+                int list_index = splat_count / 4;
+                int data_index = splat_count % 4;
+                m_VisibleBitOffset.GetData(visiblebit_offset_list, 0, list_index, 1);
+                var visiblebit_count = visiblebit_offset_list[0].GetElement(data_index);
+                Debug.Log($"bitCounts: {visiblebit_count}");
+            }
+            
+            uint[] visibleCountList = new uint[1];
+            m_VisibleCount.GetData(visibleCountList);
+            int visibleCount = Math.Max((int)visibleCountList[0], 2);
             // int visibleCount = m_SplatCount;
-            Debug.Log($"visibleCounts: {visibleCountsList[0]}");
+            Debug.Log($"visibleCounts: {visibleCountList[0]}");
             Debug.Log("m_SplatCount: " + m_SplatCount);
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
@@ -777,26 +812,27 @@ namespace GaussianSplatting.Runtime
             }
             
             // 6. 分配 BinnState 数据
-            var number_rendered_list = new Int4Data[1];
-            int splat_count = visibleCount - 1;
-            int list_index = splat_count / 4;
-            int data_index = splat_count % 4;
-            m_GeomState_left_point_offsets.GetData(number_rendered_list, 0, list_index, 1);
-            m_NumRendered = number_rendered_list[0].GetElement(data_index);
-
-            if (m_NumRendered <= 0 || m_NumRendered >= 536870912)
             {
-                m_NumRendered = 1;
-            }
+                var number_rendered_list = new Int4Data[1];
+                int splat_count = visibleCount - 1;
+                int list_index = splat_count / 4;
+                int data_index = splat_count % 4;
+                m_GeomState_left_point_offsets.GetData(number_rendered_list, 0, list_index, 1);
+                m_NumRendered = number_rendered_list[0].GetElement(data_index);
 
-            m_NumRendered = Math.Min(m_NumRendered, m_TileRenderCount);
-            Debug.Log("m_NumRendered: " + m_NumRendered);
+                if (m_NumRendered <= 0 || m_NumRendered >= 536870912)
+                {
+                    m_NumRendered = 1;
+                }
+
+                m_NumRendered = Math.Min(m_NumRendered, m_TileRenderCount);
+                Debug.Log("m_NumRendered: " + m_NumRendered);
             
-            // m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-            //     { name = "BinStateLeftTileKeyData" };
-            // m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-            //     { name = "BinStateLeftTileValueData" };
-            
+                // m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
+                //     { name = "BinStateLeftTileKeyData" };
+                // m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
+                //     { name = "BinStateLeftTileValueData" };
+            }
             
             // 7. 构造第二次排序的 key【tilekey】 和 value【coll_id】
             {

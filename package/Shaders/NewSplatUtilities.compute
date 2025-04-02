@@ -80,7 +80,8 @@ float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
 
-RWStructuredBuffer<uint> _VisibleCounts;
+RWStructuredBuffer<uint> _VisibleCount;
+RWStructuredBuffer<uint> _VisibleBit;
 RWStructuredBuffer<GeomData> _GeomData;
 RWStructuredBuffer<int> _GeomLeftTouchedTiles;
 RWStructuredBuffer<int> _GeomRightTouchedTiles;
@@ -311,7 +312,10 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 {
     uint idx = id.x;
     SplatData splat;
-    
+
+    // 清空 VisibleBits
+    _VisibleBit[idx] = 0;
+
     // 计算 view、clip 空间坐标
     _GeomLeftTouchedTiles[idx] = 0;
     
@@ -380,7 +384,10 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 
     // 采用原子加，来计算索引位置
     uint globalWriteIndex;
-    InterlockedAdd(_VisibleCounts[0], 1, globalWriteIndex);
+    InterlockedAdd(_VisibleCount[0], 1, globalWriteIndex);
+
+    // 记录 VisibleBit
+    _VisibleBit[idx] = 1;
     
     // 记录数据
     _GeomData[globalWriteIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
@@ -518,13 +525,13 @@ void CSGetNumRendered (uint3 global_id : SV_DispatchThreadID)
     uint list_index = idx / 4;
     uint data_index = idx % 4;
     uint4 tmp = _GeomPointOffset[list_index];
-    _VisibleCounts[0] = tmp[data_index];
+    _VisibleCount[0] = tmp[data_index];
 }
 
 [numthreads(1, 1, 1)]
 void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 {
-    _VisibleCounts[0] = 0;
+    _VisibleCount[0] = 0;
 }
 
 // 声明计算中需要使用的 threadgroup memory（也就是 share memory）
