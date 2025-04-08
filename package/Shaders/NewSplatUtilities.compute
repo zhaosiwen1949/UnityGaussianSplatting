@@ -330,6 +330,9 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     
     // 视锥体剔除
     if (!InFrustum(centerClipPos)) return;
+
+    // 透明度剔除
+    if (splat.opacity * 225.0f < 1.0f) return;
     
     // 解算 3D 高斯的协方差矩阵
     half opacityScale = _SplatOpacityScale;
@@ -348,13 +351,14 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 cov2d;
     float3 worldViewDir;
     float3 conic2d;
-    float radius;
+    float radius, width, height;
     float4x4 vm = mul(UNITY_MATRIX_V, _MatrixObjectToWorld);
     cov2d = CalcCovariance2D(splat.pos, cov3d0, cov3d1, vm, UNITY_MATRIX_P, _VecScreenParams);
     const float det_cov_plus_h_cov = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
     const float det_cov = (cov2d.x - 0.3f) * (cov2d.z - 0.3f) - cov2d.y * cov2d.y;
     float h_convolution_scaling = sqrt(max(0.000025f, det_cov / det_cov_plus_h_cov));
-    DecomposeCovariance2DRadius(cov2d, radius, conic2d);
+    if (!DecomposeCovariance2DRadius(cov2d, radius, width, height, conic2d)) return;
+    
     worldViewDir = _VecWorldSpaceCameraPos.xyz - centerWorldPos.xyz;
     
     
@@ -365,13 +369,21 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float2 centerNDCPos = centerClipPos.xy / centerClipPos.w;
     float2 mean2d = ((centerNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     float2 rect_min = {
-        clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-        clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+        clamp((int)((mean2d.x - width)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y - height)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
     };
     float2 rect_max = {
-        clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-        clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+        clamp((int)((mean2d.x + width + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y + height + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
     };
+    // float2 rect_min = {
+    //     clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+    //     clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    // };
+    // float2 rect_max = {
+    //     clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+    //     clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    // };
     if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
         return;
     
@@ -383,6 +395,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     col.a = min(splat.opacity * opacityScale * h_convolution_scaling, 65000);
 
     // 采用原子加，来计算索引位置
+    // uint globalWriteIndex = idx;
     uint globalWriteIndex;
     InterlockedAdd(_VisibleCount[0], 1, globalWriteIndex);
 

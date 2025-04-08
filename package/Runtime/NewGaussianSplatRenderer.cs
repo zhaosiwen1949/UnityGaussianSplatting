@@ -277,7 +277,7 @@ namespace GaussianSplatting.Runtime
                 return;
 
             m_SplatCount = asset.splatCount;
-            m_TileRenderCount = 6 * asset.splatCount;
+            m_TileRenderCount = 10 * asset.splatCount;
             m_GpuPosData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.posData.dataSize / 4), 4) { name = "GaussianPosData" };
             m_GpuPosData.SetData(asset.posData.GetData<uint>());
             m_GpuOtherData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.otherData.dataSize / 4), 4) { name = "GaussianOtherData" };
@@ -306,7 +306,7 @@ namespace GaussianSplatting.Runtime
                 m_GpuChunksValid = false;
             }
 
-            m_GpuView = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_Asset.splatCount, kGpuViewDataSize);
+            m_GpuView = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_Asset.splatCount, kGpuViewDataSize) {name = "GaussianViewData"};
             m_GpuIndexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Index, 36, 2);
             // cube indices, most often we use only the first quad
             m_GpuIndexBuffer.SetData(new ushort[]
@@ -738,7 +738,7 @@ namespace GaussianSplatting.Runtime
                 int list_index = splat_count / 4;
                 int data_index = splat_count % 4;
                 m_VisibleBitOffset.GetData(visiblebit_offset_list, 0, list_index, 1);
-                visibleCount = Math.Max(visiblebit_offset_list[0].GetElement(data_index), visibleCount);
+                visibleCount = Math.Min(Math.Max(visiblebit_offset_list[0].GetElement(data_index), visibleCount), 65535 * 1024);
                 Debug.Log($"bitCounts: {visibleCount}");
                 
                 // uint[] visibleCountList = new uint[1];

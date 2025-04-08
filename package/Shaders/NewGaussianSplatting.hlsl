@@ -17,7 +17,7 @@ struct GeomData
     float radius;
 };
 
-bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float3 conic2d)
+bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
 {
     // does not quite give the correct results?
 
@@ -44,6 +44,22 @@ bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float3 coni
     float lambda2 = mean - dist; // 2nd eigenvalue
 
     radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+
+    // same as in antimatter15/splat
+    const float q = 2.0f;
+    float r = length(float2((a - d) / 2.0, b));
+    float l1 = mean + r;
+    float l2 = max(mean - r, 0.1);
+    float2 diagVec = normalize(float2(b, lambda1 - a));
+    diagVec.y = -diagVec.y;
+    float maxSize = 4096.0;
+    float2 v1 = min(sqrt(q * l1), maxSize) * diagVec;
+    float2 v2 = min(sqrt(q * l2), maxSize) * float2(diagVec.y, -diagVec.x);
+    float2 v1_plus_2 = v1 + v2;
+    float2 v1_sub_2 = v1 - v2;
+    width = max(max(v1_plus_2.x, -v1_plus_2.x), max(v1_sub_2.x, -v1_sub_2.x));
+    height = max(max(v1_plus_2.y, -v1_plus_2.y), max(v1_sub_2.y, -v1_sub_2.y));
+    
     return true;
 }
 
