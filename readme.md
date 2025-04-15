@@ -1,3 +1,5 @@
+# 注意
+请配合 [TransPLY](https://github.com/zhaosiwen1949/TransPLY) 一起使用，同来对比 ply 的数据
 # Gaussian Splatting playground in Unity
 
 SIGGRAPH 2023 had a paper "[**3D Gaussian Splatting for Real-Time Radiance Field Rendering**](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)" by Kerbl, Kopanas, Leimkühler, Drettakis
