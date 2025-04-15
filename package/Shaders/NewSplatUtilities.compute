@@ -347,7 +347,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 cov2d;
     float3 worldViewDir;
     float3 conic2d;
-    float radius, width, height;
+    float width, height;
     float4x4 vm = mul(UNITY_MATRIX_V, _MatrixObjectToWorld);
     cov2d = CalcCovariance2D(splat.pos, cov3d0, cov3d1, vm, UNITY_MATRIX_P, _VecScreenParams);
     const float det_cov_plus_h_cov = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
@@ -402,8 +402,8 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomData[globalWriteIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
     _GeomData[globalWriteIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
     // _GeomData[idx].conic_opacity = centerClipPos;
-    _GeomData[globalWriteIndex].rgb_depth.xyz = col;
-    _GeomData[globalWriteIndex].rgb_depth.w = centerClipPos.w;
+    _GeomData[globalWriteIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
+    _GeomData[globalWriteIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
     _GeomData[globalWriteIndex].mean2D = mean2d;
     _GeomLeftTouchedTiles[globalWriteIndex] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
 }
@@ -419,7 +419,7 @@ void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
 
     uint index = idx;
 
-    _BinPointListDepthKey[idx] = _GeomData[index].rgb_depth.w;
+    _BinPointListDepthKey[idx] = f16tof32(_GeomData[index].rgb_depth.y);
     _BinPointListDepthValue[idx] = index;
 }
 
@@ -670,7 +670,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         
         // 累计透明度、颜色和深度图输出
         float T = 1.0f;
-        float3 color = 0.0f;
+        half3 color = 0.0f;
 
         // 遍历 Tile 中保存的高斯数据
         // 每个 thread 负责一个像素，逐像素累计高斯数据
@@ -704,7 +704,11 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             }
 
             // 累加颜色
-            color += _GeomData[coll_id].rgb_depth.xyz * alpha * T;
+            half3 tmp_color;
+            tmp_color.r = f16tof32(_GeomData[coll_id].rgb_depth.x >> 16);
+            tmp_color.g = f16tof32(_GeomData[coll_id].rgb_depth.x);
+            tmp_color.b = f16tof32(_GeomData[coll_id].rgb_depth.y >> 16);
+            color += tmp_color * alpha * T;
 
             // 累加深度
             // inv_depth += (1 / _GeomData[coll_id].rgb_depth.w) * alpha * T;

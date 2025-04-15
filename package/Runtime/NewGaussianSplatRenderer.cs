@@ -335,7 +335,7 @@ namespace GaussianSplatting.Runtime
             // 初始化 GeometryState
             int splatCountScale = 1;
             m_GeomState_data =
-                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 14 * 4)
+                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 12 * 4)
                     { name = "GeomStateData" };
             
             // 由于 PrefixSum 要求 Padding 数组数量到 4 的倍数，同时 stride 必须为 16 的倍数，所以我们把数组数量对齐到 GROUP_SIZE，同时保证 GROUP_ZISE 是 4 的倍数

@@ -11,7 +11,7 @@ struct GeomData
 {
     int4 touched_rects;
     float4 conic_opacity;
-    float4 rgb_depth;
+    uint2 rgb_depth;
     float2 mean2D;
 };
 
