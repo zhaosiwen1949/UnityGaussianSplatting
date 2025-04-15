@@ -406,6 +406,8 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomData[globalWriteIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
     _GeomData[globalWriteIndex].mean2D = mean2d;
     _GeomLeftTouchedTiles[globalWriteIndex] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
+    _BinPointListDepthKey[globalWriteIndex] = centerClipPos.w;
+    _BinPointListDepthValue[globalWriteIndex] = globalWriteIndex;
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]

@@ -666,10 +666,16 @@ namespace GaussianSplatting.Runtime
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
             //     Props.GeomRightTouchedTiles, m_GeomState_right_touched_tiles);
 
-            //设定 tile 屏幕分块信息
+            // 设定 tile 屏幕分块信息
             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
                 new Vector4(block_x, block_y, tile_x, tile_y));
+            
+            // 构造第一次排序的 key【depth】 和 value【coll_id】
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                Props.BinPointListDepthKey, m_BinState_left_point_list_depth_keys);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
 
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
@@ -748,23 +754,23 @@ namespace GaussianSplatting.Runtime
             }
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
-            {
-                cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys, Props.GeomData,
-                    m_GeomState_data);
-
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-                    Props.BinPointListDepthKey, m_BinState_left_point_list_depth_keys);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-                    Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
-
-                m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.DuplicateWithDepthKeys,
-                    out uint gsX, out _, out _);
-                int count = (visibleCount + (int)gsX - 1) / (int)gsX;
-                cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-                    count, 1, 1);
-            }
+            // {
+            //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
+            //
+            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys, Props.GeomData,
+            //         m_GeomState_data);
+            //
+            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
+            //         Props.BinPointListDepthKey, m_BinState_left_point_list_depth_keys);
+            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
+            //         Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
+            //
+            //     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.DuplicateWithDepthKeys,
+            //         out uint gsX, out _, out _);
+            //     int count = (visibleCount + (int)gsX - 1) / (int)gsX;
+            //     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
+            //         count, 1, 1);
+            // }
             
             // 3. 第一次基于深度进行排序
             // m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
