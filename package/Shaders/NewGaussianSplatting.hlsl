@@ -11,13 +11,12 @@ struct GeomData
 {
     int4 touched_rects;
     float4 conic_opacity;
-    float4 rgb;
+    float4 rgb_depth;
     float2 mean2D;
-    float depth;
-    float radius;
 };
 
-bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
+// bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
+bool DecomposeCovariance2DRadius(float3 cov2d, out float width, out float height, out float3 conic2d)
 {
     // does not quite give the correct results?
 
@@ -38,19 +37,19 @@ bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width
     
     float trace = a + d;
     float mean = 0.5 * trace;
-    float dist = sqrt(mean * mean - det);
-
-    float lambda1 = mean + dist; // 1st eigenvalue
-    float lambda2 = mean - dist; // 2nd eigenvalue
-
-    radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+    // float dist = sqrt(mean * mean - det);
+    //
+    // float lambda1 = mean + dist; // 1st eigenvalue
+    // float lambda2 = mean - dist; // 2nd eigenvalue
+    //
+    // radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
 
     // same as in antimatter15/splat
     const float q = 2.0f;
     float r = length(float2((a - d) / 2.0, b));
     float l1 = mean + r;
     float l2 = max(mean - r, 0.1);
-    float2 diagVec = normalize(float2(b, lambda1 - a));
+    float2 diagVec = normalize(float2(b, l1 - a));
     diagVec.y = -diagVec.y;
     float maxSize = 4096.0;
     float2 v1 = min(sqrt(q * l1), maxSize) * diagVec;
