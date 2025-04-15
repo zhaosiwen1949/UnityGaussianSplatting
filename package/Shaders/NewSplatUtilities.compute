@@ -83,9 +83,7 @@ int _SelectionMode;
 RWStructuredBuffer<uint> _VisibleCount;
 RWStructuredBuffer<uint> _VisibleBit;
 RWStructuredBuffer<GeomData> _GeomData;
-RWStructuredBuffer<int> _GeomLeftTouchedTiles;
-RWStructuredBuffer<int> _GeomRightTouchedTiles;
-RWStructuredBuffer<int> _GeomSecondTouchedTiles;
+RWStructuredBuffer<int> _GeomTouchedTiles;
 RWStructuredBuffer<float> _BinPointListDepthKey;
 RWStructuredBuffer<uint> _BinPointListTileKey;
 RWStructuredBuffer<uint> _BinPointListDepthValue;
@@ -93,7 +91,6 @@ RWStructuredBuffer<uint> _BinPointListTileValue;
 RWStructuredBuffer<uint2> _ImageRange;
 
 StructuredBuffer<uint> _RO_BinPointListDepthValue;
-StructuredBuffer<int4> _RO_GeomFirstTouchedTiles;
 StructuredBuffer<GeomData> _RO_GeomData;
 StructuredBuffer<int4> _RO_GeomPointOffset;
 StructuredBuffer<uint> _RO_BinPointListTileKey;
@@ -316,9 +313,6 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 
     // 清空 VisibleBits
     _VisibleBit[idx] = 0;
-
-    // 计算 view、clip 空间坐标
-    _GeomLeftTouchedTiles[idx] = 0;
     
     if (idx >= _SplatCount)
         return;
@@ -410,7 +404,6 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomData[globalWriteIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
     _GeomData[globalWriteIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
     _GeomData[globalWriteIndex].mean2D = mean2d;
-    _GeomLeftTouchedTiles[globalWriteIndex] = (rect_max.x - rect_min.x) * (rect_max.y - rect_min.y);
     _BinPointListDepthKey[globalWriteIndex] = centerClipPos.w;
     _BinPointListDepthValue[globalWriteIndex] = globalWriteIndex;
 }
@@ -440,12 +433,14 @@ void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
     uint coll_id = _RO_BinPointListDepthValue[idx];
 
     // TODO: 注意双目的逻辑，需要处理这里的的 index
-    uint index = coll_id;
-    uint list_index = index / 4;
-    uint data_index = index % 4;
-    int4 tmp = _RO_GeomFirstTouchedTiles[list_index];
-
-    _GeomSecondTouchedTiles[idx] = tmp[data_index];
+    // uint index = coll_id;
+    // uint list_index = index / 4;
+    // uint data_index = index % 4;
+    // int4 tmp = _RO_GeomFirstTouchedTiles[list_index];
+    //
+    // _GeomSecondTouchedTiles[idx] = tmp[data_index];
+    int4 touched_rects = _RO_GeomData[coll_id].touched_rects;
+    _GeomTouchedTiles[idx] = (touched_rects.z - touched_rects.x) * (touched_rects.w - touched_rects.y);
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]

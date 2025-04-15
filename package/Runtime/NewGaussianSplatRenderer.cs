@@ -124,10 +124,8 @@ namespace GaussianSplatting.Runtime
         
         // GeometryState
         internal GraphicsBuffer m_GeomState_data;
-        internal GraphicsBuffer m_GeomState_left_first_touched_tiles;
-        internal GraphicsBuffer m_GeomState_right_first_touched_tiles;
-        internal GraphicsBuffer m_GeomState_left_second_touched_tiles;
-        internal GraphicsBuffer m_GeomState_right_second_touched_tiles;
+        internal GraphicsBuffer m_GeomState_left_touched_tiles;
+        internal GraphicsBuffer m_GeomState_right_touched_tiles;
         internal GraphicsBuffer m_GeomState_left_point_offsets;
         internal GraphicsBuffer m_GeomState_right_point_offsets;
 
@@ -196,10 +194,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int VisibleCount = Shader.PropertyToID("_VisibleCount");
             public static readonly int VisibleBit = Shader.PropertyToID("_VisibleBit");
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
-            public static readonly int GeomLeftTouchedTiles = Shader.PropertyToID("_GeomLeftTouchedTiles");
-            public static readonly int GeomRightTouchedTiles = Shader.PropertyToID("_GeomRightTouchedTiles");
-            public static readonly int GeomSecondTouchedTiles = Shader.PropertyToID("_GeomSecondTouchedTiles");
-            public static readonly int GeomPointOffset = Shader.PropertyToID("_GeomPointOffset");
+            public static readonly int GeomTouchedTiles = Shader.PropertyToID("_GeomTouchedTiles");
             public static readonly int BinPointListDepthKey = Shader.PropertyToID("_BinPointListDepthKey");
             public static readonly int BinPointListTileKey = Shader.PropertyToID("_BinPointListTileKey");
             public static readonly int BinPointListDepthValue = Shader.PropertyToID("_BinPointListDepthValue");
@@ -207,7 +202,6 @@ namespace GaussianSplatting.Runtime
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
             
             public static readonly int RO_BinPointListDepthValue = Shader.PropertyToID("_RO_BinPointListDepthValue");
-            public static readonly int RO_GeomFirstTouchedTiles = Shader.PropertyToID("_RO_GeomFirstTouchedTiles");
             public static readonly int RO_GeomData = Shader.PropertyToID("_RO_GeomData");
             public static readonly int RO_GeomPointOffset = Shader.PropertyToID("_RO_GeomPointOffset");
             public static readonly int RO_BinPointListTileKey = Shader.PropertyToID("_RO_BinPointListTileKey");
@@ -348,14 +342,10 @@ namespace GaussianSplatting.Runtime
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
                 out _);
             int count = ((m_SplatCount + (int)gsX - 1) / (int)gsX) * (int)gsX / 4;
-            m_GeomState_left_first_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateLeftFirstTouchedTilesData" };
-            m_GeomState_right_first_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateRightFirstTouchedTilesData" };
-            m_GeomState_left_second_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateLeftSecondTouchedTilesData" };
-            m_GeomState_right_second_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateRightSecondTouchedTilesData" };
+            m_GeomState_left_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
+                { name = "GeomStateLeftTouchedTilesData" };
+            m_GeomState_right_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
+                { name = "GeomStateRightTouchedTilesData" };
             m_GeomState_left_point_offsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
                 { name = "GeomStateLeftPointOffsetData" };
             m_GeomState_right_point_offsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
@@ -585,10 +575,8 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_VisibleBit);
             DisposeBuffer(ref m_VisibleBitOffset);
             DisposeBuffer(ref m_GeomState_data);
-            DisposeBuffer(ref m_GeomState_left_first_touched_tiles);
-            DisposeBuffer(ref m_GeomState_right_first_touched_tiles);
-            DisposeBuffer(ref m_GeomState_left_second_touched_tiles);
-            DisposeBuffer(ref m_GeomState_right_second_touched_tiles);
+            DisposeBuffer(ref m_GeomState_left_touched_tiles);
+            DisposeBuffer(ref m_GeomState_right_touched_tiles);
             DisposeBuffer(ref m_GeomState_left_point_offsets);
             DisposeBuffer(ref m_GeomState_right_point_offsets);
 
@@ -668,9 +656,6 @@ namespace GaussianSplatting.Runtime
             
             // 设定 GemoState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,  Props.GeomLeftTouchedTiles, m_GeomState_left_first_touched_tiles);
-            // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-            //     Props.GeomRightTouchedTiles, m_GeomState_right_touched_tiles);
 
             // 设定 tile 屏幕分块信息
             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
@@ -797,13 +782,13 @@ namespace GaussianSplatting.Runtime
             // 4. 根据排序后的 id，重新组织 touched_tiles 数组的顺序
             {
                 cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-
+                
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.RO_GeomFirstTouchedTiles, m_GeomState_left_first_touched_tiles);
+                    Props.RO_GeomData, m_GeomState_data);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
                     Props.RO_BinPointListDepthValue, m_BinState_left_point_list_depth_values);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.GeomSecondTouchedTiles, m_GeomState_left_second_touched_tiles);
+                    Props.GeomTouchedTiles, m_GeomState_left_touched_tiles);
 
                 m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.ReorderTouchedTiles,
                     out uint gsX, out _, out _);
@@ -817,7 +802,7 @@ namespace GaussianSplatting.Runtime
                 m_PrefixSumer.PrefixSumInclusive(
                     cmb,
                     visibleCount,
-                    m_GeomState_left_second_touched_tiles,
+                    m_GeomState_left_touched_tiles,
                     m_GeomState_left_point_offsets,
                     m_ThreadBlockReduction);
             }
