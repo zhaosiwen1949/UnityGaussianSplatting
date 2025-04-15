@@ -85,18 +85,23 @@ RWStructuredBuffer<uint> _VisibleBit;
 RWStructuredBuffer<GeomData> _GeomData;
 RWStructuredBuffer<int> _GeomLeftTouchedTiles;
 RWStructuredBuffer<int> _GeomRightTouchedTiles;
-RWStructuredBuffer<int4> _GeomFirstTouchedTiles;
 RWStructuredBuffer<int> _GeomSecondTouchedTiles;
-RWStructuredBuffer<int4> _GeomPointOffset;
 RWStructuredBuffer<float> _BinPointListDepthKey;
 RWStructuredBuffer<uint> _BinPointListTileKey;
 RWStructuredBuffer<uint> _BinPointListDepthValue;
 RWStructuredBuffer<uint> _BinPointListTileValue;
-RWStructuredBuffer<uint> _BinLeftPointListTileValue;
-RWStructuredBuffer<uint> _BinRightPointListTileValue;
 RWStructuredBuffer<uint2> _ImageRange;
-RWStructuredBuffer<uint2> _ImageLeftRange;
-RWStructuredBuffer<uint2> _ImageRightRange;
+
+StructuredBuffer<uint> _RO_BinPointListDepthValue;
+StructuredBuffer<int4> _RO_GeomFirstTouchedTiles;
+StructuredBuffer<GeomData> _RO_GeomData;
+StructuredBuffer<int4> _RO_GeomPointOffset;
+StructuredBuffer<uint> _RO_BinPointListTileKey;
+StructuredBuffer<uint2> _RO_ImageLeftRange;
+StructuredBuffer<uint2> _RO_ImageRightRange;
+StructuredBuffer<uint> _RO_BinLeftPointListTileValue;
+StructuredBuffer<uint> _RO_BinRightPointListTileValue;
+
 int _NumRendered;
 float4 _TileConfig;
 int _IterIndex;
@@ -421,7 +426,7 @@ void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
 
     uint index = idx;
 
-    _BinPointListDepthKey[idx] = f16tof32(_GeomData[index].rgb_depth.y);
+    _BinPointListDepthKey[idx] = f16tof32(_RO_GeomData[index].rgb_depth.y);
     _BinPointListDepthValue[idx] = index;
 }
 
@@ -432,13 +437,13 @@ void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
 
     if (idx >= _SplatCount) return;
     
-    uint coll_id = _BinPointListDepthValue[idx];
+    uint coll_id = _RO_BinPointListDepthValue[idx];
 
     // TODO: 注意双目的逻辑，需要处理这里的的 index
     uint index = coll_id;
     uint list_index = index / 4;
     uint data_index = index % 4;
-    int4 tmp = _GeomFirstTouchedTiles[list_index];
+    int4 tmp = _RO_GeomFirstTouchedTiles[list_index];
 
     _GeomSecondTouchedTiles[idx] = tmp[data_index];
 }
@@ -450,18 +455,18 @@ void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
 
     if (idx >= _SplatCount) return;
     
-    uint index = _BinPointListDepthValue[idx];
-    int2 rect_min = int2(_GeomData[index].touched_rects.xy);
-    int2 rect_max = int2(_GeomData[index].touched_rects.zw);
+    uint index = _RO_BinPointListDepthValue[idx];
+    int2 rect_min = int2(_RO_GeomData[index].touched_rects.xy);
+    int2 rect_max = int2(_RO_GeomData[index].touched_rects.zw);
 
     if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
     {
-        // int off = idx == 0 ? 0 : _GeomPointOffset[idx - 1];
-        // _GeomPointOffset 需要按照 int4 进行处理
+        // int off = idx == 0 ? 0 : _RO_GeomPointOffset[idx - 1];
+        // _RO_GeomPointOffset 需要按照 int4 进行处理
 
         uint list_index = (idx - 1) / 4;
         uint data_index = (idx - 1) % 4;
-        uint4 tmp = _GeomPointOffset[list_index];
+        uint4 tmp = _RO_GeomPointOffset[list_index];
         uint off = idx == 0 ? 0 : tmp[data_index];
         
         for (int y = rect_min.y; y < rect_max.y; y++)
@@ -483,14 +488,14 @@ void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
     uint idx = global_id.x;
     if (idx >= _NumRendered) return;
 
-    uint currtile = _BinPointListTileKey[idx];
+    uint currtile = _RO_BinPointListTileKey[idx];
     if (idx == 0)
     {
         _ImageRange[currtile].x = 0;
     }
     else
     {
-        uint prevtile = _BinPointListTileKey[idx - 1];
+        uint prevtile = _RO_BinPointListTileKey[idx - 1];
         if (currtile != prevtile)
         {
             _ImageRange[prevtile].y = idx;
@@ -516,12 +521,12 @@ void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
-    _ImageRightRange[idx] = (uint2)0;
-    if (idx >= _NumRendered) return;
-    
-    _ImageRightRange[idx].x = ((_ImageLeftRange[idx].y - _ImageLeftRange[idx].x + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    _ImageRightRange[idx].y = idx;
+    // uint idx = global_id.x;
+    // _ImageRightRange[idx] = (uint2)0;
+    // if (idx >= _NumRendered) return;
+    //
+    // _ImageRightRange[idx].x = ((_ImageLeftRange[idx].y - _ImageLeftRange[idx].x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    // _ImageRightRange[idx].y = idx;
 }
 
 [numthreads(1, 1, 1)]
@@ -531,7 +536,7 @@ void CSGetNumRendered (uint3 global_id : SV_DispatchThreadID)
     int idx = _SplatCount - 1;
     uint list_index = idx / 4;
     uint data_index = idx % 4;
-    uint4 tmp = _GeomPointOffset[list_index];
+    uint4 tmp = _RO_GeomPointOffset[list_index];
     _VisibleCount[0] = tmp[data_index];
 }
 
@@ -559,7 +564,7 @@ void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 //     uint horizontal_blocks = (uint)((W + BLOCK_X - 1) / BLOCK_X);
 //
 //     // 计算迭代次数
-//     uint2 range = _ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
+//     uint2 range = _RO_ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
 //
 //     // 对非法值进行剔除，非法值包括：
 //     // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
@@ -584,12 +589,12 @@ void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 //         int progress = i * BLOCK_SIZE + group_index;
 //         if (range.x + progress < range.y)
 //         {
-//             int coll_id = _BinLeftPointListTileValue[range.x + progress];
+//             int coll_id = _RO_BinLeftPointListTileValue[range.x + progress];
 //             collected_id[group_index] = coll_id;
-//             collected_depth[group_index] = _GeomData[coll_id].rgb_depth.w;
-//             collected_xy[group_index] = _GeomData[coll_id].mean2D;
-//             collected_conic_opacity[group_index] = _GeomData[coll_id].conic_opacity;
-//             collected_color[group_index] = _GeomData[coll_id].rgb_depth.xyz;
+//             collected_depth[group_index] = _RO_GeomData[coll_id].rgb_depth.w;
+//             collected_xy[group_index] = _RO_GeomData[coll_id].mean2D;
+//             collected_conic_opacity[group_index] = _RO_GeomData[coll_id].conic_opacity;
+//             collected_color[group_index] = _RO_GeomData[coll_id].rgb_depth.xyz;
 //         }
 //         // GroupMemoryBarrier();
 //         GroupMemoryBarrierWithGroupSync();
@@ -602,13 +607,13 @@ void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 //             int coll_id = collected_id[j];
 //             // 根据像素到 2D 高斯中心点的距离，计算衰减度
 //             float2 xy = collected_xy[j];
-//             // float2 xy = _GeomData[coll_id].mean2D;
+//             // float2 xy = _RO_GeomData[coll_id].mean2D;
 //
 //
 //             float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
 //
 //             float4 con_o = collected_conic_opacity[j];
-//             // float4 con_o = _GeomData[coll_id].conic_opacity;
+//             // float4 con_o = _RO_GeomData[coll_id].conic_opacity;
 //             float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + con_o.y * d.x * d.y;
 //             if (power > 0.0f)
 //                 continue;
@@ -627,11 +632,11 @@ void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 //
 //             // 累加颜色
 //             color += collected_color[j] * alpha * T;
-//             // color += _GeomData[coll_id].rgb_depth.xyz * alpha * T;
+//             // color += _RO_GeomData[coll_id].rgb_depth.xyz * alpha * T;
 //
 //             // // 累加深度
 //             // inv_depth += (1 / collected_depth[j]) * alpha * T;
-//             // // inv_depth += (1 / _GeomData[coll_id].rgb_depth.w) * alpha * T;
+//             // // inv_depth += (1 / _RO_GeomData[coll_id].rgb_depth.w) * alpha * T;
 //             //
 //             // // 更新累积 alpha
 //             T = test_T;
@@ -656,7 +661,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
     if (global_id.x < W && global_id.y < H)
     {
         // 计算迭代次数
-        uint2 range = _ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
+        uint2 range = _RO_ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
         
         // 对非法值进行剔除，非法值包括：
         // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
@@ -679,16 +684,15 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
         bool done = false;
         for (int j = 0; !done && j < toDo; j++)
-        // for (int j = 0; j < 512; j++)
         {
-            int coll_id = _BinLeftPointListTileValue[range.x + j];
+            int coll_id = _RO_BinLeftPointListTileValue[range.x + j];
             // 根据像素到 2D 高斯中心点的距离，计算衰减度
-            float2 xy = _GeomData[coll_id].mean2D;
+            float2 xy = _RO_GeomData[coll_id].mean2D;
 
 
             float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
 
-            float4 con_o = _GeomData[coll_id].conic_opacity;
+            float4 con_o = _RO_GeomData[coll_id].conic_opacity;
             float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + con_o.y * d.x * d.y;
             if (power > 0.0f)
                 continue;
@@ -707,9 +711,9 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
             // 累加颜色
             half3 tmp_color;
-            tmp_color.r = f16tof32(_GeomData[coll_id].rgb_depth.x >> 16);
-            tmp_color.g = f16tof32(_GeomData[coll_id].rgb_depth.x);
-            tmp_color.b = f16tof32(_GeomData[coll_id].rgb_depth.y >> 16);
+            tmp_color.r = f16tof32(_RO_GeomData[coll_id].rgb_depth.x >> 16);
+            tmp_color.g = f16tof32(_RO_GeomData[coll_id].rgb_depth.x);
+            tmp_color.b = f16tof32(_RO_GeomData[coll_id].rgb_depth.y >> 16);
             color += tmp_color * alpha * T;
 
             // 累加深度

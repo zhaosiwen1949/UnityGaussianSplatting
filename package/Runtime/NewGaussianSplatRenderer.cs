@@ -198,18 +198,24 @@ namespace GaussianSplatting.Runtime
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
             public static readonly int GeomLeftTouchedTiles = Shader.PropertyToID("_GeomLeftTouchedTiles");
             public static readonly int GeomRightTouchedTiles = Shader.PropertyToID("_GeomRightTouchedTiles");
-            public static readonly int GeomFirstTouchedTiles = Shader.PropertyToID("_GeomFirstTouchedTiles");
             public static readonly int GeomSecondTouchedTiles = Shader.PropertyToID("_GeomSecondTouchedTiles");
             public static readonly int GeomPointOffset = Shader.PropertyToID("_GeomPointOffset");
             public static readonly int BinPointListDepthKey = Shader.PropertyToID("_BinPointListDepthKey");
             public static readonly int BinPointListTileKey = Shader.PropertyToID("_BinPointListTileKey");
             public static readonly int BinPointListDepthValue = Shader.PropertyToID("_BinPointListDepthValue");
             public static readonly int BinPointListTileValue = Shader.PropertyToID("_BinPointListTileValue");
-            public static readonly int BinLeftPointListTileValue = Shader.PropertyToID("_BinLeftPointListTileValue");
-            public static readonly int BinRightPointListTileValue = Shader.PropertyToID("_BinRightPointListTileValue");
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
-            public static readonly int ImageLeftRange = Shader.PropertyToID("_ImageLeftRange");
-            public static readonly int ImageRightRange = Shader.PropertyToID("_ImageRightRange");
+            
+            public static readonly int RO_BinPointListDepthValue = Shader.PropertyToID("_RO_BinPointListDepthValue");
+            public static readonly int RO_GeomFirstTouchedTiles = Shader.PropertyToID("_RO_GeomFirstTouchedTiles");
+            public static readonly int RO_GeomData = Shader.PropertyToID("_RO_GeomData");
+            public static readonly int RO_GeomPointOffset = Shader.PropertyToID("_RO_GeomPointOffset");
+            public static readonly int RO_BinPointListTileKey = Shader.PropertyToID("_RO_BinPointListTileKey");
+            public static readonly int RO_ImageLeftRange = Shader.PropertyToID("_RO_ImageLeftRange");
+            public static readonly int RO_ImageRightRange = Shader.PropertyToID("_RO_ImageRightRange");
+            public static readonly int RO_BinLeftPointListTileValue = Shader.PropertyToID("_RO_BinLeftPointListTileValue");
+            public static readonly int RO_BinRightPointListTileValue = Shader.PropertyToID("_RO_BinRightPointListTileValue");
+            
             public static readonly int NumRendered = Shader.PropertyToID("_NumRendered");
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
             public static readonly int IterIndex = Shader.PropertyToID("_IterIndex");
@@ -793,9 +799,9 @@ namespace GaussianSplatting.Runtime
                 cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
 
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.GeomFirstTouchedTiles, m_GeomState_left_first_touched_tiles);
+                    Props.RO_GeomFirstTouchedTiles, m_GeomState_left_first_touched_tiles);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
+                    Props.RO_BinPointListDepthValue, m_BinState_left_point_list_depth_values);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
                     Props.GeomSecondTouchedTiles, m_GeomState_left_second_touched_tiles);
 
@@ -843,12 +849,12 @@ namespace GaussianSplatting.Runtime
             {
                 cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
             
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys, Props.GeomData,
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys, Props.RO_GeomData,
                     m_GeomState_data);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
+                    Props.RO_BinPointListDepthValue, m_BinState_left_point_list_depth_values);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.GeomPointOffset, m_GeomState_left_point_offsets);
+                    Props.RO_GeomPointOffset, m_GeomState_left_point_offsets);
                 
                 GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
                 cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
@@ -891,7 +897,7 @@ namespace GaussianSplatting.Runtime
                     // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, number_rendered);
                     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                        Props.BinPointListTileKey, m_BinState_left_point_list_tile_keys);
+                        Props.RO_BinPointListTileKey, m_BinState_left_point_list_tile_keys);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.ImageRange, m_ImageState_left_ranges);
                 
@@ -950,12 +956,12 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GeomData,
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomData,
                 m_GeomState_data);
 
             // 设定 BinnState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
-                Props.BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
+                Props.RO_BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
             //     Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
             // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_BinState_left_point_list_tile_values.count);
@@ -963,7 +969,7 @@ namespace GaussianSplatting.Runtime
 
 
             // 设定 ImageState 的数据
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.ImageLeftRange,
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_ImageLeftRange,
                 m_ImageState_left_ranges);
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.ImageRightRange,
             //     m_ImageState_right_ranges);
@@ -994,17 +1000,17 @@ namespace GaussianSplatting.Runtime
             mpb.SetVector( Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
-            mpb.SetBuffer(Props.GeomData,
+            mpb.SetBuffer(Props.RO_GeomData,
                 m_GeomState_data);
 
             // 设定 BinnState 的数据
-            mpb.SetBuffer(Props.BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
+            mpb.SetBuffer(Props.RO_BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
             // mpb.SetBuffer(Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
             mpb.SetInt(Props.NumRendered, m_NumRendered);
 
 
             // 设定 ImageState 的数据
-            mpb.SetBuffer(Props.ImageLeftRange, m_ImageState_left_ranges);
+            mpb.SetBuffer(Props.RO_ImageLeftRange, m_ImageState_left_ranges);
             // mpb.SetBuffer(Props.ImageRightRange, m_ImageState_right_ranges);
 
             // mpb.SetTexture(Props.GSRenderTexture, gsRenderTexture);
