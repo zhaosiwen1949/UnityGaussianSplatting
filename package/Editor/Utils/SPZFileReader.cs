@@ -149,8 +149,9 @@ namespace GaussianSplatting.Editor.Utils
                 float w = math.sqrt(math.max(0.0f, 1.0f - xyz.sqrMagnitude));
                 var q = new float4(xyz.x, xyz.y, xyz.z, w);
                 var qq = math.normalize(q);
-                qq = GaussianUtils.PackSmallest3Rotation(qq);
-                splat.rot = new Quaternion(qq.x, qq.y, qq.z, qq.w);
+                // qq = GaussianUtils.PackSmallest3Rotation(qq);
+                // splat.rot = new Quaternion(qq.x, qq.y, qq.z, qq.w);
+                splat.rot = qq;
 
                 splat.opacity = packedAlpha[index] / 255.0f;
 

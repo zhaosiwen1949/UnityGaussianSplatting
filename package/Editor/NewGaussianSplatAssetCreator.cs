@@ -17,7 +17,7 @@ using UnityEngine.Experimental.Rendering;
 namespace GaussianSplatting.Editor
 {
     [BurstCompile]
-    public class GaussianSplatAssetCreator : EditorWindow
+    public class NewGaussianSplatAssetCreator : EditorWindow
     {
         const string kProgressTitle = "Creating Gaussian Splat Asset";
         const string kCamerasJson = "cameras.json";
@@ -39,7 +39,7 @@ namespace GaussianSplatting.Editor
         [SerializeField] string m_InputFile;
         [SerializeField] bool m_ImportCameras = true;
 
-        [SerializeField] string m_OutputFolder = "Assets/GaussianAssets";
+        [SerializeField] string m_OutputFolder = "Assets/NewGaussianAssets";
         [SerializeField] DataQuality m_Quality = DataQuality.Medium;
         [SerializeField] GaussianSplatAsset.VectorFormat m_FormatPos;
         [SerializeField] GaussianSplatAsset.VectorFormat m_FormatScale;
@@ -57,10 +57,10 @@ namespace GaussianSplatting.Editor
             m_FormatColor != GaussianSplatAsset.ColorFormat.Float32x4 ||
             m_FormatSH != GaussianSplatAsset.SHFormat.Float32;
 
-        [MenuItem("Tools/Gaussian Splats/Create GaussianSplatAsset")]
+        [MenuItem("Tools/Gaussian Splats/New Create GaussianSplatAsset")]
         public static void Init()
         {
-            var window = GetWindowWithRect<GaussianSplatAssetCreator>(new Rect(50, 50, 360, 340), false, "Gaussian Splat Creator", true);
+            var window = GetWindowWithRect<NewGaussianSplatAssetCreator>(new Rect(50, 50, 360, 340), false, "Gaussian Splat Creator", true);
             window.minSize = new Vector2(320, 320);
             window.maxSize = new Vector2(1500, 1500);
             window.Show();
@@ -69,7 +69,7 @@ namespace GaussianSplatting.Editor
         void Awake()
         {
             m_Quality = (DataQuality)EditorPrefs.GetInt(kPrefQuality, (int)DataQuality.Medium);
-            m_OutputFolder = EditorPrefs.GetString(kPrefOutputFolder, "Assets/GaussianAssets");
+            m_OutputFolder = EditorPrefs.GetString(kPrefOutputFolder, "Assets/NewGaussianAssets");
         }
 
         void OnEnable()
@@ -248,8 +248,10 @@ namespace GaussianSplatting.Editor
                 m_ErrorMessage = $"Output folder must be within project, was '{m_OutputFolder}'";
                 return;
             }
+            // 创建保存资产的目录
             Directory.CreateDirectory(m_OutputFolder);
-
+            
+            // 加载点云资源与相机数据
             EditorUtility.DisplayProgressBar(kProgressTitle, "Reading data files", 0.0f);
             GaussianSplatAsset.CameraInfo[] cameras = LoadJsonCamerasFile(m_InputFile, m_ImportCameras);
             using NativeArray<InputSplatData> inputSplats = LoadInputSplatFile(m_InputFile);
@@ -267,9 +269,10 @@ namespace GaussianSplatting.Editor
                 m_SplatData = inputSplats
             };
             boundsJob.Schedule().Complete();
-
-            EditorUtility.DisplayProgressBar(kProgressTitle, "Morton reordering", 0.05f);
-            ReorderMorton(inputSplats, boundsMin, boundsMax);
+            
+            // Morton 排序
+            // EditorUtility.DisplayProgressBar(kProgressTitle, "Morton reordering", 0.05f);
+            // ReorderMorton(inputSplats, boundsMin, boundsMax);
 
             // cluster SHs
             NativeArray<int> splatSHIndices = default;
@@ -281,7 +284,8 @@ namespace GaussianSplatting.Editor
             }
 
             string baseName = Path.GetFileNameWithoutExtension(FilePickerControl.PathToDisplayString(m_InputFile));
-
+            
+            // 创建 Unity 数据资产
             EditorUtility.DisplayProgressBar(kProgressTitle, "Creating data objects", 0.7f);
             GaussianSplatAsset asset = ScriptableObject.CreateInstance<GaussianSplatAsset>();
             asset.Initialize(inputSplats.Length, m_FormatPos, m_FormatScale, m_FormatColor, m_FormatSH, boundsMin, boundsMax, cameras);
@@ -298,6 +302,7 @@ namespace GaussianSplatting.Editor
             bool useChunks = isUsingChunks;
             if (useChunks)
                 CreateChunkData(inputSplats, pathChunk, ref dataHash);
+            // 创建数据文件
             CreatePositionsData(inputSplats, pathPos, ref dataHash);
             CreateOtherData(inputSplats, pathOther, ref dataHash, splatSHIndices);
             CreateColorData(inputSplats, pathCol, ref dataHash);

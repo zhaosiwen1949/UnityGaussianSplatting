@@ -123,6 +123,7 @@ namespace GaussianSplatting.Runtime
         internal GraphicsBuffer m_VisibleBitOffset;
         
         // GeometryState
+        internal GraphicsBuffer m_GeomState_splat_data;
         internal GraphicsBuffer m_GeomState_data;
         internal GraphicsBuffer m_GeomState_left_first_touched_tiles;
         internal GraphicsBuffer m_GeomState_right_first_touched_tiles;
@@ -195,6 +196,7 @@ namespace GaussianSplatting.Runtime
             
             public static readonly int VisibleCount = Shader.PropertyToID("_VisibleCount");
             public static readonly int VisibleBit = Shader.PropertyToID("_VisibleBit");
+            public static readonly int GeomSplatData = Shader.PropertyToID("_GeomSplatData");
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
             public static readonly int GeomLeftTouchedTiles = Shader.PropertyToID("_GeomLeftTouchedTiles");
             public static readonly int GeomRightTouchedTiles = Shader.PropertyToID("_GeomRightTouchedTiles");
@@ -277,7 +279,7 @@ namespace GaussianSplatting.Runtime
                 return;
 
             m_SplatCount = asset.splatCount;
-            m_TileRenderCount = 10 * asset.splatCount;
+            m_TileRenderCount = 100 * asset.splatCount;
             m_GpuPosData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.posData.dataSize / 4), 4) { name = "GaussianPosData" };
             m_GpuPosData.SetData(asset.posData.GetData<uint>());
             m_GpuOtherData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.otherData.dataSize / 4), 4) { name = "GaussianOtherData" };
@@ -337,6 +339,10 @@ namespace GaussianSplatting.Runtime
             m_GeomState_data =
                 new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 16 * 4)
                     { name = "GeomStateData" };
+            
+            m_GeomState_splat_data =
+                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 76 * 4)
+                    { name = "GeomStateSplatData" };
             
             // 由于 PrefixSum 要求 Padding 数组数量到 4 的倍数，同时 stride 必须为 16 的倍数，所以我们把数组数量对齐到 GROUP_SIZE，同时保证 GROUP_ZISE 是 4 的倍数
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
@@ -579,6 +585,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_VisibleBit);
             DisposeBuffer(ref m_VisibleBitOffset);
             DisposeBuffer(ref m_GeomState_data);
+            DisposeBuffer(ref m_GeomState_splat_data);
             DisposeBuffer(ref m_GeomState_left_first_touched_tiles);
             DisposeBuffer(ref m_GeomState_right_first_touched_tiles);
             DisposeBuffer(ref m_GeomState_left_second_touched_tiles);
@@ -661,6 +668,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleBit, m_VisibleBit);
             
             // 设定 GemoState 的数据
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomSplatData, m_GeomState_splat_data);
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,  Props.GeomLeftTouchedTiles, m_GeomState_left_first_touched_tiles);
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
@@ -746,6 +754,7 @@ namespace GaussianSplatting.Runtime
                 // Debug.Log($"visibleCounts: {visibleCountList[0]}");
                 Debug.Log("m_SplatCount: " + m_SplatCount);
             }
+            visibleCount = m_SplatCount;
             
             // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
             {
@@ -1092,6 +1101,150 @@ namespace GaussianSplatting.Runtime
                 {
                     Debug.LogError($"{nameof(GaussianSplatRenderer)} component is not set up correctly (Resource references are missing), or platform does not support compute shaders");
                 }
+            }
+
+            if (Input.GetKeyDown(KeyCode.Q))
+            {
+                var cam = m_Asset.cameras[0];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.W))
+            {
+                var cam = m_Asset.cameras[1];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                var cam = m_Asset.cameras[2];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                var cam = m_Asset.cameras[3];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.A))
+            {
+                var cam = m_Asset.cameras[4];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.S))
+            {
+                var cam = m_Asset.cameras[5];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.D))
+            {
+                var cam = m_Asset.cameras[6];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                var cam = m_Asset.cameras[7];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.Z))
+            {
+                var cam = m_Asset.cameras[8];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+
+            if (Input.GetKeyDown(KeyCode.X))
+            {
+                var cam = m_Asset.cameras[9];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.C))
+            {
+                var cam = m_Asset.cameras[10];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+            }
+            
+            if (Input.GetKeyDown(KeyCode.V))
+            {
+                var cam = m_Asset.cameras[11];
+                var selfTr = transform;
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
             }
         }
     }

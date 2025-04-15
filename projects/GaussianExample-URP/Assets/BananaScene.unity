@@ -269,7 +269,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b816be89314a94647847551d55d86490, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Asset: {fileID: 11400000, guid: 3b909cc97dac6744b898101c3e247bea, type: 2}
+  m_Asset: {fileID: 0}
   m_RenderOrder: 0
   m_SplatScale: 1
   m_OpacityScale: 1

@@ -36,6 +36,7 @@
 // GPU sorting needs wave ops
 #pragma require wavebasic
 #pragma require waveballot
+#pragma enable_d3d11_debug_symbols
 #pragma use_dxc
 
 cbuffer cbCommon : register(b0)
@@ -83,6 +84,7 @@ int _SelectionMode;
 RWStructuredBuffer<uint> _VisibleCount;
 RWStructuredBuffer<uint> _VisibleBit;
 RWStructuredBuffer<GeomData> _GeomData;
+RWStructuredBuffer<GeomSplatData> _GeomSplatData;
 RWStructuredBuffer<int> _GeomLeftTouchedTiles;
 RWStructuredBuffer<int> _GeomRightTouchedTiles;
 RWStructuredBuffer<int4> _GeomFirstTouchedTiles;
@@ -324,9 +326,35 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomData[idx] = (GeomData)0;
         
     splat = LoadSplatData(idx);
+
+    _GeomSplatData[idx].pos = splat.pos;
+    _GeomSplatData[idx].opacity = splat.opacity;
+    _GeomSplatData[idx].rot = splat.rot;
+    _GeomSplatData[idx].scale.xyz = splat.scale;
+    _GeomSplatData[idx].col.xyz = splat.sh.col;
+    _GeomSplatData[idx].sh1.xyz = splat.sh.sh1;
+    _GeomSplatData[idx].sh2.xyz = splat.sh.sh2;
+    _GeomSplatData[idx].sh3.xyz = splat.sh.sh3;
+    _GeomSplatData[idx].sh4.xyz = splat.sh.sh4;
+    _GeomSplatData[idx].sh5.xyz = splat.sh.sh5;
+    _GeomSplatData[idx].sh6.xyz = splat.sh.sh6;
+    _GeomSplatData[idx].sh7.xyz = splat.sh.sh7;
+    _GeomSplatData[idx].sh8.xyz = splat.sh.sh8;
+    _GeomSplatData[idx].sh9.xyz = splat.sh.sh9;
+    _GeomSplatData[idx].sh10.xyz = splat.sh.sh10;
+    _GeomSplatData[idx].sh11.xyz = splat.sh.sh11;
+    _GeomSplatData[idx].sh12.xyz = splat.sh.sh12;
+    _GeomSplatData[idx].sh13.xyz = splat.sh.sh13;
+    _GeomSplatData[idx].sh14.xyz = splat.sh.sh14;
+    _GeomSplatData[idx].sh15.xyz = splat.sh.sh15;
+    
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(splat.pos,1)).xyz;
-    float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
-    // float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
+    // float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
+    float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
+    float4x4 m_projection = UNITY_MATRIX_P;
+    m_projection[2][2] *= _ProjectionParams.z / _ProjectionParams.y;
+    // m_projection[2][2] *= _ZBufferParams.y;
+    float4 centerClipPos = mul(m_projection, float4(centerViewPos));
     
     // 视锥体剔除
     if (!InFrustum(centerClipPos)) return;
@@ -368,22 +396,22 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     // 计算该高斯球覆盖的屏幕 tile 范围
     float2 centerNDCPos = centerClipPos.xy / centerClipPos.w;
     float2 mean2d = ((centerNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
-    float2 rect_min = {
-        clamp((int)((mean2d.x - width)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-        clamp((int)((mean2d.y - height)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
-    };
-    float2 rect_max = {
-        clamp((int)((mean2d.x + width + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-        clamp((int)((mean2d.y + height + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
-    };
     // float2 rect_min = {
-    //     clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-    //     clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    //     clamp((int)((mean2d.x - width)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+    //     clamp((int)((mean2d.y - height)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
     // };
     // float2 rect_max = {
-    //     clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-    //     clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    //     clamp((int)((mean2d.x + width + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+    //     clamp((int)((mean2d.y + height + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
     // };
+    float2 rect_min = {
+        clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    };
+    float2 rect_max = {
+        clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
+        clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
+    };
     if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
         return;
     
@@ -395,9 +423,9 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     col.a = min(splat.opacity * opacityScale * h_convolution_scaling, 65000);
 
     // 采用原子加，来计算索引位置
-    // uint globalWriteIndex = idx;
-    uint globalWriteIndex;
-    InterlockedAdd(_VisibleCount[0], 1, globalWriteIndex);
+    uint globalWriteIndex = idx;
+    // uint globalWriteIndex;
+    // InterlockedAdd(_VisibleCount[0], 1, globalWriteIndex);
 
     // 记录 VisibleBit
     _VisibleBit[idx] = 1;
@@ -695,7 +723,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
 
             float4 con_o = _GeomData[coll_id].conic_opacity;
-            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + con_o.y * d.x * d.y;
             if (power > 0.0f)
                 continue;
 
@@ -724,6 +752,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
         // _GSRenderTexture[uint2(global_id.x, global_id.y)] = float4(group_id.xy, global_id.xy);
         
-        _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(GammaToLinearSpace(color.xyz), 1.0 - T);
+        // _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(GammaToLinearSpace(color.xyz), 1.0 - T);
+        _GSRenderTexture[uint2(global_id.x, global_id.y)] = float4(color.xyz, 1.0 - T);
     }
 }

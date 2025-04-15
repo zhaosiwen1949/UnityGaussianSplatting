@@ -17,6 +17,15 @@ struct GeomData
     float radius;
 };
 
+struct GeomSplatData
+{
+    float3 pos;
+    float opacity;
+    float4 rot;
+    float4 scale;
+    float4 col, sh1, sh2, sh3, sh4, sh5, sh6, sh7, sh8, sh9, sh10, sh11, sh12, sh13, sh14, sh15;
+};
+
 bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
 {
     // does not quite give the correct results?
@@ -70,10 +79,10 @@ bool InFrustum(float4 clipPos)
     // TODO: viewPos.z 是否可以通过 clipPos.w 得到【可以，两者之间是乘以1个负号的关系】
     // TODO: 验证视锥体范围内点的 Z 值到底是正还是负【viewPos 的正值】
     if (clipPos.w <= 0.2f
-        || clipPos.x * inv_clip_w > cull_scale
-        || clipPos.x * inv_clip_w < -1 * cull_scale
-        || clipPos.y * inv_clip_w > cull_scale
-        || clipPos.y * inv_clip_w < -1 * cull_scale
+        // || clipPos.x * inv_clip_w > cull_scale
+        // || clipPos.x * inv_clip_w < -1 * cull_scale
+        // || clipPos.y * inv_clip_w > cull_scale
+        // || clipPos.y * inv_clip_w < -1 * cull_scale
         ) return false;
     return true;
 }
@@ -203,6 +212,7 @@ uint2 DecodeMorton2D_16x16(uint t)      // --------EAFBGCHD
 }
 
 
+static const float SH_C0 = 0.2820948;
 static const float SH_C1 = 0.4886025;
 static const float SH_C2[] = { 1.0925484, -1.0925484, 0.3153916, -1.0925484, 0.5462742 };
 static const float SH_C3[] = { -0.5900436, 2.8906114, -0.4570458, 0.3731763, -0.4570458, 1.4453057, -0.5900436 };
@@ -219,7 +229,7 @@ half3 ShadeSH(SplatSHData splat, half3 dir, int shOrder, bool onlySH)
     half x = dir.x, y = dir.y, z = dir.z;
 
     // ambient band
-    half3 res = splat.col; // col = sh0 * SH_C0 + 0.5 is already precomputed
+    half3 res = splat.col * SH_C0 + 0.5; // col = sh0 * SH_C0 + 0.5 is already precomputed
     if (onlySH)
         res = 0.5;
     // 1st degree
@@ -467,6 +477,26 @@ float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
     return res;
 }
 
+float4 LoadAndDecodeVector128(SplatBufferDataType dataBuffer, uint addrU)
+{
+    uint addrA = addrU & ~0x3;
+
+    uint val0 = dataBuffer.Load(addrA);
+    uint val1 = dataBuffer.Load(addrA + 4);
+    uint val2 = dataBuffer.Load(addrA + 8);
+    uint val3 = dataBuffer.Load(addrA + 12);
+    if (addrU != addrA)
+    {
+        uint val4 = dataBuffer.Load(addrA + 16);
+        val0 = (val0 >> 16) | ((val1 & 0xFFFF) << 16);
+        val1 = (val1 >> 16) | ((val2 & 0xFFFF) << 16);
+        val2 = (val2 >> 16) | ((val3 & 0xFFFF) << 16);
+        val3 = (val3 >> 16) | ((val4 & 0xFFFF) << 16);
+    }
+    float4 res = float4(asfloat(val0), asfloat(val1), asfloat(val2), asfloat(val3));
+    return res;
+}
+
 float3 LoadSplatPosValue(uint index)
 {
     uint fmt = _SplatFormat & 0xFF;
@@ -511,7 +541,8 @@ SplatData LoadSplatData(uint idx)
     uint scaleFmt = (_SplatFormat >> 8) & 0xFF;
     uint shFormat = (_SplatFormat >> 16) & 0xFF;
 
-    uint otherStride = 4; // rotation is 10.10.10.2
+    // uint otherStride = 4; // rotation is 10.10.10.2
+    uint otherStride = 16; // rotation is 32.32.32.32
     if (scaleFmt == VECTOR_FMT_32F)
         otherStride += 12;
     else if (scaleFmt == VECTOR_FMT_16)
@@ -537,8 +568,10 @@ SplatData LoadSplatData(uint idx)
 
     // load raw splat data, which might be chunk-relative
     s.pos       = LoadSplatPosValue(idx);
-    s.rot       = DecodeRotation(DecodePacked_10_10_10_2(LoadUInt(_SplatOther, otherAddr)));
-    s.scale     = LoadAndDecodeVector(_SplatOther, otherAddr + 4, scaleFmt);
+    // s.rot       = DecodeRotation(DecodePacked_10_10_10_2(LoadUInt(_SplatOther, otherAddr)));
+    // s.scale     = LoadAndDecodeVector(_SplatOther, otherAddr + 4, scaleFmt);
+    s.rot       = LoadAndDecodeVector128(_SplatOther, otherAddr);
+    s.scale     = LoadAndDecodeVector(_SplatOther, otherAddr + 16, scaleFmt);
     half4 col   = LoadSplatColTex(coord);
 
     uint shIndex = idx;

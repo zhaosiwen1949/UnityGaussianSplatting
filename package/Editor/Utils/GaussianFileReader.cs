@@ -20,7 +20,8 @@ namespace GaussianSplatting.Editor.Utils
         public Vector3 sh1, sh2, sh3, sh4, sh5, sh6, sh7, sh8, sh9, shA, shB, shC, shD, shE, shF;
         public float opacity;
         public Vector3 scale;
-        public Quaternion rot;
+        // public Quaternion rot;
+        public Vector4 rot;
     }
 
     [BurstCompile]
@@ -104,14 +105,15 @@ namespace GaussianSplatting.Editor.Utils
                 // rot
                 var q = splat.rot;
                 var qq = GaussianUtils.NormalizeSwizzleRotation(new float4(q.x, q.y, q.z, q.w));
-                qq = GaussianUtils.PackSmallest3Rotation(qq);
-                splat.rot = new Quaternion(qq.x, qq.y, qq.z, qq.w);
+                // qq = GaussianUtils.PackSmallest3Rotation(qq);
+                // splat.rot = new Quaternion(qq.x, qq.y, qq.z, qq.w);
+                splat.rot = qq;
 
                 // scale
                 splat.scale = GaussianUtils.LinearScale(splat.scale);
 
                 // color
-                splat.dc0 = GaussianUtils.SH0ToColor(splat.dc0);
+                // splat.dc0 = GaussianUtils.SH0ToColor(splat.dc0);
                 splat.opacity = GaussianUtils.Sigmoid(splat.opacity);
 
                 splatData[index] = splat;

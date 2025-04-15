@@ -9,6 +9,8 @@
 
 /Assets/GaussianAssets/*
 /Assets/GaussianAssets.meta
+/Assets/NewGaussianAssets/*
+/Assets/NewGaussianAssets.meta
 /Assets/Models~/*
 /Library/*
 /Logs/*
@@ -18,6 +20,8 @@
 
 /projects/**/Assets/GaussianAssets/*
 /projects/**/Assets/GaussianAssets.meta
+/projects/**/Assets/NewGaussianAssets/*
+/projects/**/Assets/NewGaussianAssets.meta
 /projects/**/Assets/Models~/*
 /projects/**/Library/*
 /projects/**/Logs/*

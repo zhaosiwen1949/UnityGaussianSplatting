@@ -129,7 +129,8 @@ namespace GaussianSplatting.Runtime
 
         public static int GetOtherSizeNoSHIndex(VectorFormat scaleFormat)
         {
-            return 4 + GetVectorSize(scaleFormat);
+            // return 4 + GetVectorSize(scaleFormat);
+            return 16 + GetVectorSize(scaleFormat);
         }
 
         public static int GetSHCount(SHFormat fmt, int splatCount)
