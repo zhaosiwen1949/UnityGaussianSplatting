@@ -695,7 +695,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
 
             float4 con_o = _GeomData[coll_id].conic_opacity;
-            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + con_o.y * d.x * d.y;
             if (power > 0.0f)
                 continue;
 
