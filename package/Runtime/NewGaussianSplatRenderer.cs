@@ -328,7 +328,7 @@ namespace GaussianSplatting.Runtime
             InitSortBuffers(splatCount);
             
             // 初始化 VisibleCounts
-            m_VisibleCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1 ,4) { name = "GaussianSplatVisibleCount" };
+            m_VisibleCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, 4) { name = "GaussianSplatVisibleCount" };
             uint[] zero = { 0 };
             m_VisibleCount.SetData(zero);
             
@@ -764,16 +764,8 @@ namespace GaussianSplatting.Runtime
             // }
             
             // 3. 第一次基于深度进行排序
-            // m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
-            // m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
-            // m_FirstRadixSorterArgs.count = (uint)m_SplatCount;
-            // if (m_Sorter.Valid)
-            // {
-            //     // 初始化第一遍的基数排序
-            //     m_FirstRadixSorterArgs.resources.Dispose();
-            //     m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_FirstRadixSorterArgs.count);
-            //     m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
-            // }
+            // Keys = m_BinState_left_point_list_depth_keys;
+            // Values = m_BinState_left_point_list_depth_values;
             {
                 m_FirstRadixSorterArgs.count = (uint)visibleCount;
                 m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
@@ -823,11 +815,6 @@ namespace GaussianSplatting.Runtime
 
                 m_NumRendered = Math.Min(m_NumRendered, m_TileRenderCount);
                 Debug.Log("m_NumRendered: " + m_NumRendered);
-            
-                // m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-                //     { name = "BinStateLeftTileKeyData" };
-                // m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, number_rendered, 4)
-                //     { name = "BinStateLeftTileValueData" };
             }
             
             // 7. 构造第二次排序的 key【tilekey】 和 value【coll_id】
@@ -858,17 +845,8 @@ namespace GaussianSplatting.Runtime
             }
             
             // 8. 第二次基数排序
-            // m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
-            // m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
-            // // m_SecondRadixSorterArgs.count = (uint)number_rendered;
-            // m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
-            // if (m_Sorter.Valid)
-            // {
-            //     // 初始化第一遍的基数排序
-            //     m_SecondRadixSorterArgs.resources.Dispose();
-            //     m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load(m_SecondRadixSorterArgs.count);
-            //     m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
-            // }
+            // Keys = m_BinState_left_point_list_tile_keys;
+            // Values = m_BinState_left_point_list_tile_values;
             {
                 m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
                 m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
@@ -1035,10 +1013,6 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatOpacityScale, m_OpacityScale);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOrder, m_SHOrder);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOnly, m_SHOnly ? 1 : 0);
-            
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcViewData, Props.GeomData, m_GeomState_data);
-            // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcViewData,
-            //     Props.GeomRightTouchedTiles, m_GeomState_right_touched_tiles);
 
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcViewData, out uint gsX, out _, out _);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcViewData, (m_GpuView.count + (int)gsX - 1)/(int)gsX, 1, 1);
