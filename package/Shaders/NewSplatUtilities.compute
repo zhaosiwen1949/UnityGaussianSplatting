@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-#define GROUP_SIZE 1024
+// #define GROUP_SIZE 1024
+#define GROUP_SIZE 128
 
 #pragma kernel CSSetIndices
 #pragma kernel CSCalcDistances
@@ -667,10 +668,9 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // if (range.x >= _NumRendered || range.y >= _NumRendered)
         //     return;
         
-        int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
         int toDo = range.y - range.x;
         
-        if (rounds > 100)
+        if (toDo > 100 * BLOCK_SIZE)
             return;
         
         // 累计透明度、颜色和深度图输出
@@ -692,13 +692,13 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
             float4 con_o = _RO_GeomData[coll_id].conic_opacity;
             float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + con_o.y * d.x * d.y;
-            if (power > 0.0f)
-                continue;
+            // if (power > 0.0f)
+            //     continue;
 
             // 计算 alpha 透明度
             float alpha = min(0.99f, con_o.w * exp(power));
-            if (alpha < 1.0f / 255.0f)
-                continue;
+            // if (alpha < 1.0f / 255.0f)
+            //     continue;
 
             float test_T = T * (1 - alpha);
             if (test_T < TEST_ALPHA)
