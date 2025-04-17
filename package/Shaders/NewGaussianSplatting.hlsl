@@ -3,8 +3,7 @@
 #define GAUSSIAN_SPLATTING_HLSL
 
 #define MAX_DISPATCH_GROUP 65535
-// #define GROUP_SIZE 1024
-#define GROUP_SIZE 64
+#define GROUP_SIZE 128
 
 #define BLOCK_X 16
 #define BLOCK_Y 16
