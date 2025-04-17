@@ -2,6 +2,10 @@
 #ifndef GAUSSIAN_SPLATTING_HLSL
 #define GAUSSIAN_SPLATTING_HLSL
 
+#define MAX_DISPATCH_GROUP 65535
+// #define GROUP_SIZE 1024
+#define GROUP_SIZE 64
+
 #define BLOCK_X 16
 #define BLOCK_Y 16
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
@@ -14,6 +18,11 @@ struct GeomData
     uint2 rgb_depth;
     float2 mean2D;
 };
+
+uint SwizzleDispatchThreadId(uint3 id)
+{
+    return id.x + id.y * MAX_DISPATCH_GROUP * GROUP_SIZE;
+}
 
 // bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
 bool DecomposeCovariance2DRadius(float3 cov2d, out float width, out float height, out float3 conic2d)

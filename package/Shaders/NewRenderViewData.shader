@@ -70,7 +70,7 @@ Shader "Gaussian Splatting/NewRenderViewData"
                 
                 // 累计透明度、颜色和深度图输出
                 float T = 1.0f;
-                float4 color = 0.0f;
+                float3 color = 0.0f;
                 
                 // 遍历 Tile 中保存的高斯数据
                 // 每个 thread 负责一个像素，逐像素累计高斯数据
@@ -102,7 +102,11 @@ Shader "Gaussian Splatting/NewRenderViewData"
                     }
                 
                     // 累加颜色
-                    color += _GeomData[coll_id].rgb * alpha * T;
+                    half3 tmp_color;
+                    tmp_color.r = f16tof32(_GeomData[coll_id].rgb_depth.x >> 16);
+                    tmp_color.g = f16tof32(_GeomData[coll_id].rgb_depth.x);
+                    tmp_color.b = f16tof32(_GeomData[coll_id].rgb_depth.y >> 16);
+                    color += tmp_color * alpha * T;
                 
                     // // 累加深度
                     // inv_depth += (1 / collected_depth[j]) * alpha * T;
@@ -114,7 +118,7 @@ Shader "Gaussian Splatting/NewRenderViewData"
 
                 // float4 color = _GSRenderTexture.Load(int3(i.uv, 0));
                 
-                return half4(GammaToLinearSpace(color.xyz), 1.0 - T);
+                return half4(GammaToLinearSpace(color), 1.0 - T);
             }
             ENDCG
         }

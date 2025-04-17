@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-// #define GROUP_SIZE 1024
-#define GROUP_SIZE 128
 
 #pragma kernel CSSetIndices
 #pragma kernel CSCalcDistances
@@ -119,7 +117,7 @@ uint FloatToSortableUint(float f)
 [numthreads(GROUP_SIZE,1,1)]
 void CSSetIndices (uint3 id : SV_DispatchThreadID)
 {
-    uint idx = id.x;
+    uint idx = SwizzleDispatchThreadId(id);
     if (idx >= _SplatCount)
         return;
 
@@ -129,7 +127,7 @@ void CSSetIndices (uint3 id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE,1,1)]
 void CSCalcDistances (uint3 id : SV_DispatchThreadID)
 {
-    uint idx = id.x;
+    uint idx = SwizzleDispatchThreadId(id);
     if (idx >= _SplatCount)
         return;
 
@@ -249,7 +247,7 @@ bool IsSplatCut(float3 pos)
 [numthreads(GROUP_SIZE,1,1)]
 void CSCalcViewData (uint3 id : SV_DispatchThreadID)
 {
-    uint idx = id.x;
+    uint idx = SwizzleDispatchThreadId(id);
     if (idx >= _SplatCount)
         return;
 
@@ -309,7 +307,7 @@ void CSCalcViewData (uint3 id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 {
-    uint idx = id.x;
+    uint idx = SwizzleDispatchThreadId(id);
 
     // 清空 VisibleBits
     _VisibleBit[idx] = 0;
@@ -415,7 +413,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
+    uint idx = SwizzleDispatchThreadId(global_id);
 
     if (idx >= _SplatCount) return;
     
@@ -430,7 +428,7 @@ void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
+    uint idx = SwizzleDispatchThreadId(global_id);
 
     if (idx >= _SplatCount) return;
     
@@ -450,7 +448,7 @@ void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
+    uint idx = SwizzleDispatchThreadId(global_id);
 
     if (idx >= _SplatCount) return;
     
@@ -484,7 +482,7 @@ void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
+    uint idx = SwizzleDispatchThreadId(global_id);
     if (idx >= _NumRendered) return;
 
     uint currtile = _RO_BinPointListTileKey[idx];
@@ -511,7 +509,7 @@ void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
 {
-    uint idx = global_id.x;
+    uint idx = SwizzleDispatchThreadId(global_id);
 
     if (idx >= _NumRendered) return;
     _ImageRange[idx] = (uint2)0;
@@ -520,7 +518,7 @@ void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
 {
-    // uint idx = global_id.x;
+    // uint idx = SwizzleDispatchThreadId(global_id);
     // _ImageRightRange[idx] = (uint2)0;
     // if (idx >= _NumRendered) return;
     //

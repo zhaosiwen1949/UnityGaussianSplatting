@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 using System;
 using GPUPrefixSums.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
@@ -65,6 +64,7 @@ namespace GaussianSplatting.Runtime
     [ExecuteInEditMode]
     public class NewGaussianSplatRenderer : MonoBehaviour
     {
+        static int MAX_DISPATCH_GROUP = 65535; 
         public enum RenderMode
         {
             Splats,
@@ -450,7 +450,8 @@ namespace GaussianSplatting.Runtime
             m_CSSplatUtilities.SetBuffer((int)KernelIndices.SetIndices, Props.SplatSortKeys, m_GpuSortKeys);
             m_CSSplatUtilities.SetInt(Props.SplatCount, m_GpuSortDistances.count);
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.SetIndices, out uint gsX, out _, out _);
-            m_CSSplatUtilities.Dispatch((int)KernelIndices.SetIndices, (m_GpuSortDistances.count + (int)gsX - 1)/(int)gsX, 1, 1);
+            GetDispatchGroupNum(m_GpuSortDistances.count, (int)gsX, out int countX, out int countY);
+            m_CSSplatUtilities.Dispatch((int)KernelIndices.SetIndices, countX, countY, 1);
 
             m_SorterArgs.inputKeys = m_GpuSortDistances;
             m_SorterArgs.inputValues = m_GpuSortKeys;
@@ -627,6 +628,21 @@ namespace GaussianSplatting.Runtime
             tileX = (screen_width + blockX - 1) / blockX;
             tileY = (screen_height + blockY - 1) / blockY;
         }
+
+        void GetDispatchGroupNum(int count, int groupDim, out int countX, out int countY)
+        {
+            int limitX = groupDim * MAX_DISPATCH_GROUP;
+            if (count > limitX)
+            {
+                countX = MAX_DISPATCH_GROUP;
+                countY = m_SplatCount / limitX + 1;
+            }
+            else
+            {
+                countX = (count  + groupDim - 1) / groupDim;
+                countY = 1;
+            }
+        }
         
         internal void PreProcessViewData(CommandBuffer cmb, Camera cam)
         {
@@ -706,9 +722,10 @@ namespace GaussianSplatting.Runtime
             int splatCountScale = 1;
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
                 out _);
-            int count = (m_SplatCount * splatCountScale + (int)gsX - 1) / (int)gsX;
+            
+            GetDispatchGroupNum(m_SplatCount, (int)gsX, out int countX, out int countY);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-                count, 1, 1);
+                countX, countY, 1);
         }
 
         internal void RadixSortPoints(CommandBuffer cmb, Camera cam)
@@ -784,9 +801,9 @@ namespace GaussianSplatting.Runtime
 
                 m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.ReorderTouchedTiles,
                     out uint gsX, out _, out _);
-                int count = (visibleCount + (int)gsX - 1) / (int)gsX;
+                GetDispatchGroupNum(visibleCount, (int)gsX, out int countX, out int countY);
                 cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    count, 1, 1);
+                    countX, countY, 1);
             }
             
             // 5. 求前缀和数组
@@ -839,9 +856,9 @@ namespace GaussianSplatting.Runtime
             
                 m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.DuplicateWithTileKeys,
                     out uint gsX, out _, out _);
-                int count = (visibleCount + (int)gsX - 1) / (int)gsX;
+                GetDispatchGroupNum(visibleCount, (int)gsX, out int countX, out int countY);
                 cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    count, 1, 1);
+                    countX, countY, 1);
             }
             
             // 8. 第二次基数排序
@@ -856,8 +873,6 @@ namespace GaussianSplatting.Runtime
             {
                 EnsureImageState(cam);
                 {
-                    // Debug.Log("number_rendered: " + number_rendered);
-                    // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, number_rendered);
                     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.RO_BinPointListTileKey, m_BinState_left_point_list_tile_keys);
@@ -866,10 +881,9 @@ namespace GaussianSplatting.Runtime
                 
                     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.IdentifyTileRanges, out uint gsX,
                         out _, out _);
-                    // int count = (number_rendered + (int)gsX - 1) / (int)gsX;
-                    int count = (m_NumRendered + (int)gsX - 1) / (int)gsX;
+                    GetDispatchGroupNum(m_NumRendered, (int)gsX, out int countX, out int countY);
                     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                        count, 1, 1);
+                        countX, countY, 1);
                 }
                 
                 // // DEBUG: 计算 ImageState 中 range 的和
@@ -1015,7 +1029,8 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOnly, m_SHOnly ? 1 : 0);
 
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcViewData, out uint gsX, out _, out _);
-            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcViewData, (m_GpuView.count + (int)gsX - 1)/(int)gsX, 1, 1);
+            GetDispatchGroupNum(m_GpuView.count, (int)gsX, out int countX, out int countY);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcViewData, countX, countY, 1);
         }
 
         internal void SortPoints(CommandBuffer cmd, Camera cam, Matrix4x4 matrix)
@@ -1039,7 +1054,8 @@ namespace GaussianSplatting.Runtime
             cmd.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, m_SplatCount);
             cmd.SetComputeIntParam(m_CSSplatUtilities, Props.SplatChunkCount, m_GpuChunksValid ? m_GpuChunks.count : 0);
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcDistances, out uint gsX, out _, out _);
-            cmd.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcDistances, (m_GpuSortDistances.count + (int)gsX - 1)/(int)gsX, 1, 1);
+            GetDispatchGroupNum(m_GpuSortDistances.count, (int)gsX, out int countX, out int countY);
+            cmd.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcDistances, countX, countY, 1);
 
             // sort the splats
             EnsureSorterAndRegister();
