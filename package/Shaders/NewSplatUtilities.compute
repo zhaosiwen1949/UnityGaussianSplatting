@@ -430,7 +430,7 @@ void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
 {
     uint idx = SwizzleDispatchThreadId(global_id);
 
-    if (idx >= _SplatCount) return;
+    // if (idx >= _SplatCount) return;
     
     uint coll_id = _RO_BinPointListDepthValue[idx];
 
@@ -456,27 +456,27 @@ void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
     int2 rect_min = int2(_RO_GeomData[index].touched_rects.xy);
     int2 rect_max = int2(_RO_GeomData[index].touched_rects.zw);
 
-    if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
+    // if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
+    // {
+    // int off = idx == 0 ? 0 : _RO_GeomPointOffset[idx - 1];
+    // _RO_GeomPointOffset 需要按照 int4 进行处理
+    
+    uint list_index = (idx - 1) / 4;
+    uint data_index = (idx - 1) % 4;
+    uint4 tmp = _RO_GeomPointOffset[list_index];
+    uint off = idx == 0 ? 0 : tmp[data_index];
+    
+    for (int y = rect_min.y; y < rect_max.y; y++)
     {
-        // int off = idx == 0 ? 0 : _RO_GeomPointOffset[idx - 1];
-        // _RO_GeomPointOffset 需要按照 int4 进行处理
-
-        uint list_index = (idx - 1) / 4;
-        uint data_index = (idx - 1) % 4;
-        uint4 tmp = _RO_GeomPointOffset[list_index];
-        uint off = idx == 0 ? 0 : tmp[data_index];
-        
-        for (int y = rect_min.y; y < rect_max.y; y++)
+        for (int x = rect_min.x; x < rect_max.x; x++)
         {
-            for (int x = rect_min.x; x < rect_max.x; x++)
-            {
-                uint tile_key = y * _TileConfig.z + x;
-                _BinPointListTileKey[off] = tile_key;
-                _BinPointListTileValue[off] = index;
-                off++;
-            }
+            uint tile_key = y * _TileConfig.z + x;
+            _BinPointListTileKey[off] = tile_key;
+            _BinPointListTileValue[off] = index;
+            off++;
         }
     }
+    // }
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
