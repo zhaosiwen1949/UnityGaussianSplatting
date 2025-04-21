@@ -21,16 +21,23 @@
 #pragma multi_compile __ SORT_PAIRS
 #pragma multi_compile __ VULKAN
 
-#pragma kernel InitDeviceRadixSort
-#pragma kernel Upsweep
-#pragma kernel Scan
-#pragma kernel Downsweep
+// #pragma kernel InitDeviceRadixSort
+// #pragma kernel Upsweep
+// #pragma kernel Scan
+// #pragma kernel Downsweep
 
 // PrefixSum - ReduceThenScan
 #pragma kernel Reduce
 #pragma kernel PrefixScan
 #pragma kernel PropagateInclusive
 #pragma kernel PropagateExclusive
+
+// OneSweep Sort
+#pragma kernel ForwardSweep
+// #pragma kernel DigitBinningPass
+#pragma kernel InitSweep
+#pragma kernel GlobalHistogram
+#pragma kernel SweepScan
 
 // GPU sorting needs wave ops
 #pragma require wavebasic
@@ -50,7 +57,6 @@ cbuffer cbCommon : register(b0)
     uint e_fullDispatches;
 };
 
-
 //Due to a bug with SPIRV pre 1.6, we cannot use WaveGetLaneCount() to get the currently active wavesize 
 inline uint getWaveSize()
 {
@@ -67,8 +73,10 @@ inline uint getWaveIndex(uint gtid, uint waveSize)
     return gtid / waveSize; //CAUTION, 1D WORKGROUP ONLY!
 }
 
+#include "NewForwardSweep.hlsl"
+// #include "NewOneSweep.hlsl"
 #include "NewReduceThenScan.hlsl"
-#include "NewDeviceRadixSort.hlsl"
+// #include "NewDeviceRadixSort.hlsl"
 #include "NewGaussianSplatting.hlsl"
 #include "UnityCG.cginc"
 

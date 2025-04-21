@@ -149,6 +149,21 @@ namespace GaussianSplatting.Runtime
         private ComputeBuffer m_VisibleCountReduction;
         private ReduceThenScan m_PrefixSumer;
         private ComputeBuffer m_ThreadBlockReduction;
+        
+        private GPUSorting.Runtime.NewForwardSweep m_FirstSweepSorter;
+        private GraphicsBuffer m_FirstAlt;
+        private GraphicsBuffer m_FirstAltPayload;
+        private ComputeBuffer m_FirstGlobalHist;
+        private ComputeBuffer m_FirstPassHist;
+        private ComputeBuffer m_FirstIndex;
+        
+        private GPUSorting.Runtime.NewForwardSweep m_SecondSweepSorter;
+        private GraphicsBuffer m_SecondAlt;
+        private GraphicsBuffer m_SecondAltPayload;
+        private ComputeBuffer m_SecondGlobalHist;
+        private ComputeBuffer m_SecondPassHist;
+        private ComputeBuffer m_SecondIndex;
+        
         private GpuSorting m_FirstRadixSorter;
         private GpuSorting.Args m_FirstRadixSorterArgs;
         private GpuSorting m_SecondRadixSorter;
@@ -327,6 +342,7 @@ namespace GaussianSplatting.Runtime
             // InitRadixSortBuffers(splatCount);
             InitSortBuffers(splatCount);
             
+            
             // 初始化 VisibleCounts
             m_VisibleCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, 4) { name = "GaussianSplatVisibleCount" };
             uint[] zero = { 0 };
@@ -415,24 +431,52 @@ namespace GaussianSplatting.Runtime
                 ref m_ThreadBlockReduction);
             
             // 初始化第一遍的基数排序需要的资源
-            m_FirstRadixSorterArgs.resources.Dispose();
-            m_FirstRadixSorter = new GpuSorting(m_CSSplatUtilities);
-            m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
-            m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
-            if (m_Sorter.Valid)
-            {
-                m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)splatCount);
-            }
+            // m_FirstRadixSorterArgs.resources.Dispose();
+            // m_FirstRadixSorter = new GpuSorting(m_CSSplatUtilities);
+            // m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
+            // m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
+            // if (m_Sorter.Valid)
+            // {
+            //     m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)splatCount);
+            // }
             
             // 初始化第二遍的基数排序需要的资源
-            m_SecondRadixSorterArgs.resources.Dispose();
-            m_SecondRadixSorter = new GpuSorting(m_CSSplatUtilities);
-            m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
-            m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
-            if (m_Sorter.Valid)
-            {
-                m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)m_TileRenderCount );
-            }
+            // m_SecondRadixSorterArgs.resources.Dispose();
+            // m_SecondRadixSorter = new GpuSorting(m_CSSplatUtilities);
+            // m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
+            // m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
+            // if (m_Sorter.Valid)
+            // {
+            //     m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)m_TileRenderCount );
+            // }
+            
+            DisposeBuffer(ref m_FirstAlt);
+            DisposeBuffer(ref m_FirstAltPayload);
+            DisposeBuffer(ref m_FirstGlobalHist);
+            DisposeBuffer(ref m_FirstPassHist);
+            DisposeBuffer(ref m_FirstIndex);
+            m_FirstSweepSorter = new GPUSorting.Runtime.NewForwardSweep(
+                m_CSSplatUtilities,
+                m_SplatCount + 1000,
+                ref m_FirstAlt,
+                ref m_FirstAltPayload,
+                ref m_FirstGlobalHist,
+                ref m_FirstPassHist,
+                ref m_FirstIndex);
+            
+            DisposeBuffer(ref m_SecondAlt);
+            DisposeBuffer(ref m_SecondAltPayload);
+            DisposeBuffer(ref m_SecondGlobalHist);
+            DisposeBuffer(ref m_SecondPassHist);
+            DisposeBuffer(ref m_SecondIndex);
+            m_SecondSweepSorter = new GPUSorting.Runtime.NewForwardSweep(
+                m_CSSplatUtilities,
+                m_TileRenderCount + 1000,
+                ref m_SecondAlt,
+                ref m_SecondAltPayload,
+                ref m_SecondGlobalHist,
+                ref m_SecondPassHist,
+                ref m_SecondIndex);
         }
 
         void InitSortBuffers(int count)
@@ -453,11 +497,11 @@ namespace GaussianSplatting.Runtime
             GetDispatchGroupNum(m_GpuSortDistances.count, (int)gsX, out int countX, out int countY);
             m_CSSplatUtilities.Dispatch((int)KernelIndices.SetIndices, countX, countY, 1);
 
-            m_SorterArgs.inputKeys = m_GpuSortDistances;
-            m_SorterArgs.inputValues = m_GpuSortKeys;
-            m_SorterArgs.count = (uint)count;
-            if (m_Sorter.Valid)
-                m_SorterArgs.resources = GpuSorting.SupportResources.Load((uint)count);
+            // m_SorterArgs.inputKeys = m_GpuSortDistances;
+            // m_SorterArgs.inputValues = m_GpuSortKeys;
+            // m_SorterArgs.count = (uint)count;
+            // if (m_Sorter.Valid)
+            //     m_SorterArgs.resources = GpuSorting.SupportResources.Load((uint)count);
         }
 
         bool resourcesAreSetUp => m_ShaderNewRenderViewData != null && m_ShaderSplats != null && m_ShaderComposite != null && m_ShaderDebugPoints != null &&
@@ -479,7 +523,7 @@ namespace GaussianSplatting.Runtime
         {
             if (m_Sorter == null && resourcesAreSetUp)
             {
-                m_Sorter = new GpuSorting(m_CSSplatUtilities);
+                // m_Sorter = new GpuSorting(m_CSSplatUtilities);
             }
 
             if (!m_Registered && resourcesAreSetUp)
@@ -569,6 +613,16 @@ namespace GaussianSplatting.Runtime
             m_SorterArgs.resources.Dispose();
             DisposeBuffer(ref m_ThreadBlockReduction);
             DisposeBuffer(ref m_VisibleCountReduction);
+            DisposeBuffer(ref m_FirstAlt);
+            DisposeBuffer(ref m_FirstAltPayload);
+            DisposeBuffer(ref m_FirstGlobalHist);
+            DisposeBuffer(ref m_FirstPassHist);
+            DisposeBuffer(ref m_FirstIndex);
+            DisposeBuffer(ref m_SecondAlt);
+            DisposeBuffer(ref m_SecondAltPayload);
+            DisposeBuffer(ref m_SecondGlobalHist);
+            DisposeBuffer(ref m_SecondPassHist);
+            DisposeBuffer(ref m_SecondIndex);
             m_FirstRadixSorterArgs.resources.Dispose();
             m_SecondRadixSorterArgs.resources.Dispose();
 
@@ -783,10 +837,24 @@ namespace GaussianSplatting.Runtime
             // 3. 第一次基于深度进行排序
             // Keys = m_BinState_left_point_list_depth_keys;
             // Values = m_BinState_left_point_list_depth_values;
-            {
-                m_FirstRadixSorterArgs.count = (uint)visibleCount;
-                m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
-            }
+            // {
+            //     m_FirstRadixSorterArgs.count = (uint)visibleCount;
+            //     m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
+            // }
+            
+            m_FirstSweepSorter.Sort(
+                cmb,
+                visibleCount,
+                m_BinState_left_point_list_depth_keys,
+                m_BinState_left_point_list_depth_values,
+                m_FirstAlt,
+                m_FirstAltPayload,
+                m_FirstGlobalHist,
+                m_FirstPassHist,
+                m_FirstIndex,
+                typeof(float),
+                typeof(uint),
+                true);
             
             // 4. 根据排序后的 id，重新组织 touched_tiles 数组的顺序
             {
@@ -864,10 +932,24 @@ namespace GaussianSplatting.Runtime
             // 8. 第二次基数排序
             // Keys = m_BinState_left_point_list_tile_keys;
             // Values = m_BinState_left_point_list_tile_values;
-            {
-                m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
-                m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
-            }
+            // {
+            //     m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
+            //     m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
+            // }
+            
+            m_SecondSweepSorter.Sort(
+                cmb,
+                m_NumRendered,
+                m_BinState_left_point_list_tile_keys,
+                m_BinState_left_point_list_tile_values,
+                m_SecondAlt,
+                m_SecondAltPayload,
+                m_SecondGlobalHist,
+                m_SecondPassHist,
+                m_SecondIndex,
+                typeof(uint),
+                typeof(uint),
+                true);
             
             // 9. 计算 ImageState 数据
             {
