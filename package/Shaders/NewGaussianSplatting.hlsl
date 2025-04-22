@@ -9,6 +9,7 @@
 #define BLOCK_Y 16
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define TEST_ALPHA 0.001
+#define LN2 0.693147180559945
 
 struct GeomData
 {
@@ -17,8 +18,6 @@ struct GeomData
     uint2 rgb_depth;
     float2 mean2D;
 };
-
-const float ln2 = 0.69314718056f;
 
 uint SwizzleDispatchThreadId(uint3 id)
 {
@@ -42,7 +41,7 @@ bool BlockContainsCenter(float2 pix_min, float2 pix_max, float2 center)
 bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4 conic)
 {
     float a, b, c, dx, dy;
-    float w = 2.0f * ln2 * log2(256 * conic.w);
+    float w = 2.0f * LN2 * log2(256 * conic.w);
 
     if (center.x * 2.0f < pix_min.x + pix_max.x)
     {
@@ -113,10 +112,10 @@ bool DecomposeCovariance2DRadius(float3 cov2d, float alpha, out float width, out
 
     // same as in antimatter15/splat
     // const float q = 2.0f;
-    const float q = ln2 * log2(8 * alpha);
+    const float q = abs(LN2 * log2( 16 * alpha));
     // float r = length(float2((a - d) / 2.0, b));
-    // float l1 = mean + r;
-    // float l2 = max(mean - r, 0.1);
+    // float lambda1 = mean + r;
+    // float lambda2 = max(mean - r, 0.1);
     float2 diagVec = normalize(float2(b, lambda1 - a));
     diagVec.y = -diagVec.y;
     float maxSize = 4096.0;
