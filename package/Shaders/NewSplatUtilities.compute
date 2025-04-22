@@ -450,7 +450,22 @@ void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
     //
     // _GeomSecondTouchedTiles[idx] = tmp[data_index];
     int4 touched_rects = _RO_GeomData[coll_id].touched_rects;
-    _GeomTouchedTiles[idx] = (touched_rects.z - touched_rects.x) * (touched_rects.w - touched_rects.y);
+    // _GeomTouchedTiles[idx] = (touched_rects.z - touched_rects.x) * (touched_rects.w - touched_rects.y);
+    uint num = 0;
+    for (int y = touched_rects.y; y < touched_rects.w; y++)
+    {
+        for (int x = touched_rects.x; x < touched_rects.z; x++)
+        {
+            float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
+            float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
+            if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[coll_id].mean2D) ||
+                BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[coll_id].mean2D, _RO_GeomData[coll_id].conic_opacity))
+            {
+                num++;
+            }
+        }
+    }
+    _GeomTouchedTiles[idx] = num;
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
@@ -478,10 +493,21 @@ void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
     {
         for (int x = rect_min.x; x < rect_max.x; x++)
         {
-            uint tile_key = y * _TileConfig.z + x;
-            _BinPointListTileKey[off] = tile_key;
-            _BinPointListTileValue[off] = index;
-            off++;
+            // uint tile_key = y * _TileConfig.z + x;
+            // _BinPointListTileKey[off] = tile_key;
+            // _BinPointListTileValue[off] = index;
+            // off++;
+
+            float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
+            float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
+            if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[index].mean2D) ||
+                BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[index].mean2D, _RO_GeomData[index].conic_opacity))
+            {
+                uint tile_key = y * _TileConfig.z + x;
+                _BinPointListTileKey[off] = tile_key;
+                _BinPointListTileValue[off] = index;
+                off++;
+            }
         }
     }
     // }

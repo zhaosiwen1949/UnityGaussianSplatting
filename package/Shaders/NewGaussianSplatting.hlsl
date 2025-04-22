@@ -23,6 +23,63 @@ uint SwizzleDispatchThreadId(uint3 id)
     return id.x + id.y * MAX_DISPATCH_GROUP * GROUP_SIZE;
 }
 
+bool SegmentIntersectEllipse(float a, float b, float c, float d, float l, float r)
+{
+    float delta = b * b - 4.0f * a * c;
+    // return delta >= 0.0f && t1 <= sqrt(delta) && t2 >= -sqrt(delta)
+    float t1 = (l - d) * (2.0f * a) + b;
+    float t2 = (r - d) * (2.0f * a) + b;
+    return delta >= 0.0f && (t1 <= 0.0f || t1 * t1 <= delta) && (t2 >= 0.0f || t2 * t2 <= delta);
+}
+
+bool BlockContainsCenter(float2 pix_min, float2 pix_max, float2 center)
+{
+    return center.x >= pix_min.x && center.x <= pix_max.x && center.y >= pix_min.y && center.y <= pix_max.y;
+}
+
+bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4 conic)
+{
+    float a, b, c, dx, dy;
+    float w = 2.0f * 0.69314718056 * log2(256 * conic.w);
+
+    if (center.x * 2.0f < pix_min.x + pix_max.x)
+    {
+        dx = center.x - pix_min.x;
+    }
+    else
+    {
+        dx = center.x - pix_max.x;
+    }
+
+    a = conic.z;
+    b = -2.0f * conic.y * dx;
+    c = conic.x * dx * dx - w;
+
+    if (SegmentIntersectEllipse(a, b, c, center.y, pix_min.y, pix_max.y))
+    {
+        return true;
+    }
+
+    if (center.y * 2.0f < pix_min.y + pix_max.y)
+    {
+        dy = center.y - pix_min.y;
+    }
+    else
+    {
+        dy = center.y - pix_max.y;
+    }
+    a = conic.x;
+    b = -2.0f * conic.y * dy;
+    c = conic.z * dy * dy - w;
+
+    if (SegmentIntersectEllipse(a, b, c, center.x, pix_min.x, pix_max.x))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 // bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
 bool DecomposeCovariance2DRadius(float3 cov2d, out float width, out float height, out float3 conic2d)
 {

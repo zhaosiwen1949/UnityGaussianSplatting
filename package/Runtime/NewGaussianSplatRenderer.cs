@@ -860,6 +860,11 @@ namespace GaussianSplatting.Runtime
             {
                 cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
                 
+                // 设定 tile 屏幕分块信息
+                GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
+                cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
+                    new Vector4(block_x, block_y, tile_x, tile_y));
+                
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
                     Props.RO_GeomData, m_GeomState_data);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
@@ -905,7 +910,7 @@ namespace GaussianSplatting.Runtime
             // 7. 构造第二次排序的 key【tilekey】 和 value【coll_id】
             {
                 cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-            
+                
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys, Props.RO_GeomData,
                     m_GeomState_data);
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
