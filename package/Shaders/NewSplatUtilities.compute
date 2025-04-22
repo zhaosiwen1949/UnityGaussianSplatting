@@ -360,7 +360,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     const float det_cov_plus_h_cov = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
     const float det_cov = (cov2d.x - 0.3f) * (cov2d.z - 0.3f) - cov2d.y * cov2d.y;
     float h_convolution_scaling = sqrt(max(0.000025f, det_cov / det_cov_plus_h_cov));
-    if (!DecomposeCovariance2DRadius(cov2d, width, height, conic2d)) return;
+    if (!DecomposeCovariance2DRadius(cov2d, color.a, width, height, conic2d)) return;
     
     worldViewDir = _VecWorldSpaceCameraPos.xyz - centerWorldPos.xyz;
     

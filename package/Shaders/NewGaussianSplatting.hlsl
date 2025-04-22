@@ -18,6 +18,8 @@ struct GeomData
     float2 mean2D;
 };
 
+const float ln2 = 69314718056;
+
 uint SwizzleDispatchThreadId(uint3 id)
 {
     return id.x + id.y * MAX_DISPATCH_GROUP * GROUP_SIZE;
@@ -40,7 +42,7 @@ bool BlockContainsCenter(float2 pix_min, float2 pix_max, float2 center)
 bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4 conic)
 {
     float a, b, c, dx, dy;
-    float w = 2.0f * 0.69314718056 * log2(256 * conic.w);
+    float w = 2.0f * ln2 * log2(256 * conic.w);
 
     if (center.x * 2.0f < pix_min.x + pix_max.x)
     {
@@ -81,7 +83,7 @@ bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4
 }
 
 // bool DecomposeCovariance2DRadius(float3 cov2d, out float radius, out float width, out float height, out float3 conic2d)
-bool DecomposeCovariance2DRadius(float3 cov2d, out float width, out float height, out float3 conic2d)
+bool DecomposeCovariance2DRadius(float3 cov2d, float alpha, out float width, out float height, out float3 conic2d)
 {
     // does not quite give the correct results?
 
@@ -102,23 +104,26 @@ bool DecomposeCovariance2DRadius(float3 cov2d, out float width, out float height
     
     float trace = a + d;
     float mean = 0.5 * trace;
-    // float dist = sqrt(mean * mean - det);
-    //
-    // float lambda1 = mean + dist; // 1st eigenvalue
-    // float lambda2 = mean - dist; // 2nd eigenvalue
+    float dist = sqrt(mean * mean - det);
+    
+    float lambda1 = mean + dist; // 1st eigenvalue
+    float lambda2 = mean - dist; // 2nd eigenvalue
     //
     // radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
 
     // same as in antimatter15/splat
-    const float q = 2.0f;
-    float r = length(float2((a - d) / 2.0, b));
-    float l1 = mean + r;
-    float l2 = max(mean - r, 0.1);
-    float2 diagVec = normalize(float2(b, l1 - a));
+    // const float q = 2.0f;
+    const float q = ln2 * log2(8 * alpha);
+    // float r = length(float2((a - d) / 2.0, b));
+    // float l1 = mean + r;
+    // float l2 = max(mean - r, 0.1);
+    float2 diagVec = normalize(float2(b, lambda1 - a));
     diagVec.y = -diagVec.y;
     float maxSize = 4096.0;
-    float2 v1 = min(sqrt(q * l1), maxSize) * diagVec;
-    float2 v2 = min(sqrt(q * l2), maxSize) * float2(diagVec.y, -diagVec.x);
+    // float2 v1 = min(sqrt(q * lambda1), maxSize) * diagVec;
+    // float2 v2 = min(sqrt(q * lambda2), maxSize) * float2(diagVec.y, -diagVec.x);
+    float2 v1 = min(1.414214f * sqrt(q * lambda1), maxSize) * diagVec;
+    float2 v2 = min(1.414214f * sqrt(q * lambda2), maxSize) * float2(diagVec.y, -diagVec.x);
     float2 v1_plus_2 = v1 + v2;
     float2 v1_sub_2 = v1 - v2;
     width = max(max(v1_plus_2.x, -v1_plus_2.x), max(v1_sub_2.x, -v1_sub_2.x));
