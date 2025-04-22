@@ -18,7 +18,7 @@ struct GeomData
     float2 mean2D;
 };
 
-const float ln2 = 69314718056;
+const float ln2 = 0.69314718056f;
 
 uint SwizzleDispatchThreadId(uint3 id)
 {
