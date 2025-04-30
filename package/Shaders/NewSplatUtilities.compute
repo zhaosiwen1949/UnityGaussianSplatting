@@ -10,73 +10,38 @@
 #pragma kernel CSIdentifyTileRanges
 #pragma kernel CSInitImageRanges
 #pragma kernel CSCalcRanges
-#pragma kernel CSGetNumRendered
-#pragma kernel CSSetVisibleCounts
+#pragma kernel CSInitNumArgs
+#pragma kernel CSInitSortArgs
 #pragma kernel CSRenderViewData
 
-// DeviceRadixSort
-#pragma multi_compile __ KEY_UINT KEY_INT KEY_FLOAT
+#pragma kernel InitDeviceRadixSort
+#pragma kernel Upsweep
+#pragma kernel Scan
+#pragma kernel Downsweep
+
+#pragma multi_compile __ KEY_UINT KEY_INT KEY_FLOAT KEY_ULONG
 #pragma multi_compile __ PAYLOAD_UINT PAYLOAD_INT PAYLOAD_FLOAT
 #pragma multi_compile __ SHOULD_ASCEND
 #pragma multi_compile __ SORT_PAIRS
-#pragma multi_compile __ VULKAN
-
-// #pragma kernel InitDeviceRadixSort
-// #pragma kernel Upsweep
-// #pragma kernel Scan
-// #pragma kernel Downsweep
-
-// PrefixSum - ReduceThenScan
-#pragma kernel Reduce
-#pragma kernel PrefixScan
-#pragma kernel PropagateInclusive
-#pragma kernel PropagateExclusive
-
-// OneSweep Sort
-#pragma kernel ForwardSweep
-// #pragma kernel DigitBinningPass
-#pragma kernel InitSweep
-#pragma kernel GlobalHistogram
-#pragma kernel SweepScan
 
 // GPU sorting needs wave ops
+#pragma require int64
 #pragma require wavebasic
 #pragma require waveballot
 #pragma use_dxc
+#pragma enable_d3d11_debug_symbols
+
 
 cbuffer cbCommon : register(b0)
 {
     // Sorting
-    uint e_numKeys;
     uint e_radixShift;
-    uint e_threadBlocks;
-    uint padding;
-    // PrefixSum
-    uint e_vectorizedSize;
-    uint e_isPartial;
-    uint e_fullDispatches;
+    uint e_min;
+    uint e_max;
+    uint e_argsOffset;
 };
 
-//Due to a bug with SPIRV pre 1.6, we cannot use WaveGetLaneCount() to get the currently active wavesize 
-inline uint getWaveSize()
-{
-    #if defined(VULKAN)
-    GroupMemoryBarrierWithGroupSync(); //Make absolutely sure the wave is not diverged here
-    return dot(countbits(WaveActiveBallot(true)), uint4(1, 1, 1, 1));
-    #else
-    return WaveGetLaneCount();
-    #endif
-}
-
-inline uint getWaveIndex(uint gtid, uint waveSize)
-{
-    return gtid / waveSize; //CAUTION, 1D WORKGROUP ONLY!
-}
-
-#include "NewForwardSweep.hlsl"
-// #include "NewOneSweep.hlsl"
-#include "NewReduceThenScan.hlsl"
-// #include "NewDeviceRadixSort.hlsl"
+#include "NewDeviceRadixSort.hlsl"
 #include "NewGaussianSplatting.hlsl"
 #include "UnityCG.cginc"
 
@@ -87,26 +52,19 @@ float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
 
-RWStructuredBuffer<uint> _VisibleCount;
-RWStructuredBuffer<uint> _VisibleBit;
+RWStructuredBuffer<uint> _NumArgs;
 RWStructuredBuffer<GeomData> _GeomData;
-RWStructuredBuffer<int> _GeomTouchedTiles;
-RWStructuredBuffer<float> _BinPointListDepthKey;
-RWStructuredBuffer<uint> _BinPointListTileKey;
-RWStructuredBuffer<uint> _BinPointListDepthValue;
-RWStructuredBuffer<uint> _BinPointListTileValue;
+RWStructuredBuffer<uint64_t> _BinPointListKey;
+RWStructuredBuffer<uint> _BinPointListValue;
 RWStructuredBuffer<uint2> _ImageRange;
 
-StructuredBuffer<uint> _RO_BinPointListDepthValue;
 StructuredBuffer<GeomData> _RO_GeomData;
-StructuredBuffer<int4> _RO_GeomPointOffset;
-StructuredBuffer<uint> _RO_BinPointListTileKey;
+StructuredBuffer<uint64_t> _RO_BinPointListKey;
 StructuredBuffer<uint2> _RO_ImageLeftRange;
 StructuredBuffer<uint2> _RO_ImageRightRange;
-StructuredBuffer<uint> _RO_BinLeftPointListTileValue;
-StructuredBuffer<uint> _RO_BinRightPointListTileValue;
+StructuredBuffer<uint> _RO_BinLeftPointListValue;
+StructuredBuffer<uint> _RO_BinRightPointListValue;
 
-int _NumRendered;
 float4 _TileConfig;
 int _IterIndex;
 
@@ -142,6 +100,7 @@ void CSCalcDistances (uint3 id : SV_DispatchThreadID)
     uint origIdx = _SplatSortKeys[idx];
 
     float3 pos = LoadSplatPos(origIdx);
+    // float3 pos = LoadSplatPosValue(origIdx);
     pos = mul(_MatrixMV, float4(pos.xyz, 1)).xyz;
 
     _SplatSortDistances[idx] = FloatToSortableUint(pos.z);
@@ -316,9 +275,6 @@ void CSCalcViewData (uint3 id : SV_DispatchThreadID)
 void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 {
     uint idx = SwizzleDispatchThreadId(id);
-
-    // 清空 VisibleBits
-    _VisibleBit[idx] = 0;
     
     if (idx >= _SplatCount)
         return;
@@ -379,14 +335,6 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
         clamp((int)((mean2d.x + width + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
         clamp((int)((mean2d.y + height + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
     };
-    // float2 rect_min = {
-    //     clamp((int)((mean2d.x - radius)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-    //     clamp((int)((mean2d.y - radius)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
-    // };
-    // float2 rect_max = {
-    //     clamp((int)((mean2d.x + radius + _TileConfig.x - 1)/_TileConfig.x), (int)0, (int)(_TileConfig.z)),
-    //     clamp((int)((mean2d.y + radius + _TileConfig.y - 1)/_TileConfig.y), (int)0, (int)(_TileConfig.w))
-    // };
     if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
         return;
     
@@ -400,133 +348,151 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     col.a = min(color.a * opacityScale * h_convolution_scaling, 65000);
 
     // 采用原子加，来计算索引位置
-    // uint globalWriteIndex = idx;
-    uint globalWriteIndex;
-    InterlockedAdd(_VisibleCount[0], 1, globalWriteIndex);
-
-    // 记录 VisibleBit
-    _VisibleBit[idx] = 1;
+    // uint globalGemoIndex = idx;
+    uint globalGemoIndex;
+    InterlockedAdd(_NumArgs[0], 1, globalGemoIndex);
     
     // 记录数据
-    _GeomData[globalWriteIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
-    _GeomData[globalWriteIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
-    // _GeomData[idx].conic_opacity = centerClipPos;
-    _GeomData[globalWriteIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
-    _GeomData[globalWriteIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
-    _GeomData[globalWriteIndex].mean2D = mean2d;
-    _BinPointListDepthKey[globalWriteIndex] = centerClipPos.w;
-    _BinPointListDepthValue[globalWriteIndex] = globalWriteIndex;
-}
-
-[numthreads(GROUP_SIZE, 1, 1)]
-void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
-{
-    uint idx = SwizzleDispatchThreadId(global_id);
-
-    if (idx >= _SplatCount) return;
-    
-    // uint index = _SinglePassMode == 1 ? idx * 2 + _IterIndex : idx;
-
-    uint index = idx;
-
-    _BinPointListDepthKey[idx] = f16tof32(_RO_GeomData[index].rgb_depth.y);
-    _BinPointListDepthValue[idx] = index;
-}
-
-[numthreads(GROUP_SIZE, 1, 1)]
-void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
-{
-    uint idx = SwizzleDispatchThreadId(global_id);
-
-    // if (idx >= _SplatCount) return;
-    
-    uint coll_id = _RO_BinPointListDepthValue[idx];
-
-    // TODO: 注意双目的逻辑，需要处理这里的的 index
-    // uint index = coll_id;
-    // uint list_index = index / 4;
-    // uint data_index = index % 4;
-    // int4 tmp = _RO_GeomFirstTouchedTiles[list_index];
-    //
-    // _GeomSecondTouchedTiles[idx] = tmp[data_index];
-    int4 touched_rects = _RO_GeomData[coll_id].touched_rects;
-    // _GeomTouchedTiles[idx] = (touched_rects.z - touched_rects.x) * (touched_rects.w - touched_rects.y);
-    uint num = 0;
-    for (int y = touched_rects.y; y < touched_rects.w; y++)
-    {
-        for (int x = touched_rects.x; x < touched_rects.z; x++)
-        {
-            float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
-            float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
-            if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[coll_id].mean2D) ||
-                BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[coll_id].mean2D, _RO_GeomData[coll_id].conic_opacity))
-            {
-                num++;
-            }
-        }
-    }
-    _GeomTouchedTiles[idx] = num;
-}
-
-[numthreads(GROUP_SIZE, 1, 1)]
-void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
-{
-    uint idx = SwizzleDispatchThreadId(global_id);
-
-    if (idx >= _SplatCount) return;
-    
-    uint index = _RO_BinPointListDepthValue[idx];
-    int2 rect_min = int2(_RO_GeomData[index].touched_rects.xy);
-    int2 rect_max = int2(_RO_GeomData[index].touched_rects.zw);
-
-    // if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
-    // {
-    // int off = idx == 0 ? 0 : _RO_GeomPointOffset[idx - 1];
-    // _RO_GeomPointOffset 需要按照 int4 进行处理
-    
-    uint list_index = (idx - 1) / 4;
-    uint data_index = (idx - 1) % 4;
-    uint4 tmp = _RO_GeomPointOffset[list_index];
-    uint off = idx == 0 ? 0 : tmp[data_index];
+    // _GeomData[globalGemoIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
+    _GeomData[globalGemoIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
+    // _GeomData[globalGemoIndex].conic_opacity = centerClipPos;
+    _GeomData[globalGemoIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
+    _GeomData[globalGemoIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
+    _GeomData[globalGemoIndex].mean2D = mean2d;
     
     for (int y = rect_min.y; y < rect_max.y; y++)
     {
         for (int x = rect_min.x; x < rect_max.x; x++)
         {
-            // uint tile_key = y * _TileConfig.z + x;
-            // _BinPointListTileKey[off] = tile_key;
-            // _BinPointListTileValue[off] = index;
-            // off++;
-
             float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
             float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
-            if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[index].mean2D) ||
-                BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[index].mean2D, _RO_GeomData[index].conic_opacity))
+            if (BlockContainsCenter(pix_min, pix_max, mean2d) ||
+                BlockIntersectEllipse(pix_min, pix_max, mean2d, float4(conic2d.x, conic2d.y, conic2d.z, col.a)))
             {
-                uint tile_key = y * _TileConfig.z + x;
-                _BinPointListTileKey[off] = tile_key;
-                _BinPointListTileValue[off] = index;
-                off++;
+                uint globalBinPointIndex;
+                InterlockedAdd(_NumArgs[1], 1, globalBinPointIndex);
+                
+                uint depth = FloatToUint(centerClipPos.w);
+                uint64_t tile_key = y * _TileConfig.z + x;
+                tile_key <<= 32;
+                _BinPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));;
+                _BinPointListValue[globalBinPointIndex] = globalGemoIndex;
             }
         }
     }
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSDuplicateWithDepthKeys (uint3 global_id : SV_DispatchThreadID)
+{
+    // uint idx = SwizzleDispatchThreadId(global_id);
+    //
+    // if (idx >= _SplatCount) return;
+    //
+    // // uint index = _SinglePassMode == 1 ? idx * 2 + _IterIndex : idx;
+    //
+    // uint index = idx;
+    //
+    // _BinPointListDepthKey[idx] = f16tof32(_RO_GeomData[index].rgb_depth.y);
+    // _BinPointListDepthValue[idx] = index;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSReorderTouchedTiles (uint3 global_id : SV_DispatchThreadID)
+{
+    // uint idx = SwizzleDispatchThreadId(global_id);
+    //
+    // // if (idx >= _SplatCount) return;
+    //
+    // uint coll_id = _RO_BinPointListDepthValue[idx];
+    //
+    // // TODO: 注意双目的逻辑，需要处理这里的的 index
+    // // uint index = coll_id;
+    // // uint list_index = index / 4;
+    // // uint data_index = index % 4;
+    // // int4 tmp = _RO_GeomFirstTouchedTiles[list_index];
+    // //
+    // // _GeomSecondTouchedTiles[idx] = tmp[data_index];
+    // int4 touched_rects = _RO_GeomData[coll_id].touched_rects;
+    // // _GeomTouchedTiles[idx] = (touched_rects.z - touched_rects.x) * (touched_rects.w - touched_rects.y);
+    // uint num = 0;
+    // for (int y = touched_rects.y; y < touched_rects.w; y++)
+    // {
+    //     for (int x = touched_rects.x; x < touched_rects.z; x++)
+    //     {
+    //         float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
+    //         float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
+    //         if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[coll_id].mean2D) ||
+    //             BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[coll_id].mean2D, _RO_GeomData[coll_id].conic_opacity))
+    //         {
+    //             num++;
+    //         }
+    //     }
     // }
+    // _GeomTouchedTiles[idx] = num;
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSDuplicateWithTileKeys (uint3 global_id : SV_DispatchThreadID)
+{
+    // uint idx = SwizzleDispatchThreadId(global_id);
+    //
+    // if (idx >= _SplatCount) return;
+    //
+    // uint index = _RO_BinPointListDepthValue[idx];
+    // int2 rect_min = int2(_RO_GeomData[index].touched_rects.xy);
+    // int2 rect_max = int2(_RO_GeomData[index].touched_rects.zw);
+    //
+    // // if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) > 0)
+    // // {
+    // // int off = idx == 0 ? 0 : _RO_GeomPointOffset[idx - 1];
+    // // _RO_GeomPointOffset 需要按照 int4 进行处理
+    //
+    // uint list_index = (idx - 1) / 4;
+    // uint data_index = (idx - 1) % 4;
+    // uint4 tmp = _RO_GeomPointOffset[list_index];
+    // uint off = idx == 0 ? 0 : tmp[data_index];
+    //
+    // for (int y = rect_min.y; y < rect_max.y; y++)
+    // {
+    //     for (int x = rect_min.x; x < rect_max.x; x++)
+    //     {
+    //         // uint tile_key = y * _TileConfig.z + x;
+    //         // _BinPointListTileKey[off] = tile_key;
+    //         // _BinPointListTileValue[off] = index;
+    //         // off++;
+    //
+    //         float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
+    //         float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
+    //         if (BlockContainsCenter(pix_min, pix_max, _RO_GeomData[index].mean2D) ||
+    //             BlockIntersectEllipse(pix_min, pix_max, _RO_GeomData[index].mean2D, _RO_GeomData[index].conic_opacity))
+    //         {
+    //             uint tile_key = y * _TileConfig.z + x;
+    //             _BinPointListTileKey[off] = tile_key;
+    //             _BinPointListTileValue[off] = index;
+    //             off++;
+    //         }
+    //     }
+    // }
+    // // }
 }
 
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
 {
     uint idx = SwizzleDispatchThreadId(global_id);
-    if (idx >= _NumRendered) return;
+    if (idx >= _NumArgs[1]) return;
 
-    uint currtile = _RO_BinPointListTileKey[idx];
+    uint64_t currkey = _RO_BinPointListKey[idx];
+    uint currtile = currkey >> 32;
     if (idx == 0)
     {
         _ImageRange[currtile].x = 0;
     }
     else
     {
-        uint prevtile = _RO_BinPointListTileKey[idx - 1];
+        uint64_t prevkey = _RO_BinPointListKey[idx - 1];
+        uint prevtile = prevkey >> 32;
         if (currtile != prevtile)
         {
             _ImageRange[prevtile].y = idx;
@@ -534,9 +500,9 @@ void CSIdentifyTileRanges (uint3 global_id : SV_DispatchThreadID)
         }
     }
 
-    if (idx == _NumRendered - 1)
+    if (idx == _NumArgs[1] - 1)
     {
-        _ImageRange[currtile].y = _NumRendered;
+        _ImageRange[currtile].y = _NumArgs[1];
     }
 }
 
@@ -545,7 +511,7 @@ void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
 {
     uint idx = SwizzleDispatchThreadId(global_id);
 
-    if (idx >= _NumRendered) return;
+    if (idx >= _NumArgs[1]) return;
     _ImageRange[idx] = (uint2)0;
 }
 
@@ -554,27 +520,48 @@ void CSCalcRanges (uint3 global_id : SV_DispatchThreadID)
 {
     // uint idx = SwizzleDispatchThreadId(global_id);
     // _ImageRightRange[idx] = (uint2)0;
-    // if (idx >= _NumRendered) return;
+    // if (idx >= _NumArgs[1]) return;
     //
     // _ImageRightRange[idx].x = ((_ImageLeftRange[idx].y - _ImageLeftRange[idx].x + BLOCK_SIZE - 1) / BLOCK_SIZE);
     // _ImageRightRange[idx].y = idx;
 }
 
 [numthreads(1, 1, 1)]
-void CSGetNumRendered (uint3 global_id : SV_DispatchThreadID)
+void CSInitNumArgs (uint3 global_id : SV_DispatchThreadID)
 {
-    uint id = global_id.x;
-    int idx = _SplatCount - 1;
-    uint list_index = idx / 4;
-    uint data_index = idx % 4;
-    uint4 tmp = _RO_GeomPointOffset[list_index];
-    _VisibleCount[0] = tmp[data_index];
+    _NumArgs[0] = 0;
+    _NumArgs[1] = 0;
+    _NumArgs[2] = 1;
+    _NumArgs[3] = 1;
+    _NumArgs[4] = 1;
+    _NumArgs[5] = 1;
+    _NumArgs[6] = 1;
+    _NumArgs[7] = 1;
 }
 
 [numthreads(1, 1, 1)]
-void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
+void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
 {
-    _VisibleCount[0] = 0;
+    uint count = clamp(_NumArgs[1], e_min, e_max);
+    
+    _NumArgs[1] = count;
+    _NumArgs[2] = (count + PART_SIZE - 1) / PART_SIZE;
+    _NumArgs[3] = 1;
+    _NumArgs[4] = 1;
+    
+    int limitX = GROUP_SIZE * MAX_DISPATCH_GROUP;
+    if (count > limitX)
+    {
+        _NumArgs[5] = MAX_DISPATCH_GROUP;
+        _NumArgs[6] = count / limitX + 1;
+    }
+    else
+    {
+        _NumArgs[5] = (count  + GROUP_SIZE - 1) / GROUP_SIZE;
+        _NumArgs[6] = 1;
+    }
+
+    _NumArgs[7] = 1;
 }
 
 // 声明计算中需要使用的 threadgroup memory（也就是 share memory）
@@ -596,12 +583,6 @@ void CSSetVisibleCounts (uint3 global_id : SV_DispatchThreadID)
 //
 //     // 计算迭代次数
 //     uint2 range = _RO_ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
-//
-//     // 对非法值进行剔除，非法值包括：
-//     // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
-//     // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 
-//     // if (range.x >= _NumRendered || range.y >= _NumRendered)
-//     //     return;
 //
 //     int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
 //     int toDo = range.y - range.x;
@@ -699,12 +680,6 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // 计算迭代次数
         uint2 range = _RO_ImageLeftRange[group_id.y * horizontal_blocks + group_id.x];
         
-        // 对非法值进行剔除，非法值包括：
-        // 1. 错误的 _ImageRange 中的 x、y 值，超过了 _BinLeftPointListTileValue 的大小
-        // 2. 错误的 _BinLeftPointListTileValue 中的 coll_id 值，超过了 _GeomData 
-        // if (range.x >= _NumRendered || range.y >= _NumRendered)
-        //     return;
-        
         int toDo = range.y - range.x;
         
         if (toDo > 100 * BLOCK_SIZE)
@@ -720,7 +695,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         bool done = false;
         for (int j = 0; !done && j < toDo; j++)
         {
-            int coll_id = _RO_BinLeftPointListTileValue[range.x + j];
+            int coll_id = _RO_BinLeftPointListValue[range.x + j];
             // 根据像素到 2D 高斯中心点的距离，计算衰减度
             float2 xy = _RO_GeomData[coll_id].mean2D;
 

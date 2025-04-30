@@ -6,17 +6,20 @@
  * https://github.com/b0nes164/GPUSorting
  *
  ******************************************************************************/
+
+using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Assertions;
 
-namespace GPUSorting.Runtime
+namespace GPUInt64Sorting.Runtime
 {
     public abstract class NewGPUSortBase
     {
         protected const int k_radix = 256;
-        protected const int k_radixPasses = 4;
+        protected const int k_radixPasses = 8;
         protected const int k_partitionSize = 3840;
+        protected const int k_passBit = 8 * k_radixPasses;
 
         protected const int k_minSize = 1;
         protected const int k_maxSize = 65535 * k_partitionSize;
@@ -26,9 +29,11 @@ namespace GPUSorting.Runtime
         protected LocalKeyword m_keyIntKeyword;
         protected LocalKeyword m_keyUintKeyword;
         protected LocalKeyword m_keyFloatKeyword;
+        protected LocalKeyword m_keyUlongKeyword;
         protected LocalKeyword m_payloadIntKeyword;
         protected LocalKeyword m_payloadUintKeyword;
         protected LocalKeyword m_payloadFloatKeyword;
+        protected LocalKeyword m_payloadUlongKeyword;
         protected LocalKeyword m_ascendKeyword;
         protected LocalKeyword m_sortPairKeyword;
 
@@ -57,6 +62,7 @@ namespace GPUSorting.Runtime
             m_keyUintKeyword = new LocalKeyword(m_cs, "KEY_UINT");
             m_keyIntKeyword = new LocalKeyword(m_cs, "KEY_INT");
             m_keyFloatKeyword = new LocalKeyword(m_cs, "KEY_FLOAT");
+            m_keyUlongKeyword = new LocalKeyword(m_cs, "KEY_ULONG");
             m_payloadUintKeyword = new LocalKeyword(m_cs, "PAYLOAD_UINT");
             m_payloadIntKeyword = new LocalKeyword(m_cs, "PAYLOAD_INT");
             m_payloadFloatKeyword = new LocalKeyword(m_cs, "PAYLOAD_FLOAT");
@@ -69,6 +75,7 @@ namespace GPUSorting.Runtime
                 m_cs.EnableKeyword(m_keyIntKeyword);
                 m_cs.DisableKeyword(m_keyUintKeyword);
                 m_cs.DisableKeyword(m_keyFloatKeyword);
+                m_cs.DisableKeyword(m_keyUlongKeyword);
             }
 
             if (_type == typeof(uint))
@@ -76,6 +83,7 @@ namespace GPUSorting.Runtime
                 m_cs.DisableKeyword(m_keyIntKeyword);
                 m_cs.EnableKeyword(m_keyUintKeyword);
                 m_cs.DisableKeyword(m_keyFloatKeyword);
+                m_cs.DisableKeyword(m_keyUlongKeyword);
             }
 
             if (_type == typeof(float))
@@ -83,6 +91,15 @@ namespace GPUSorting.Runtime
                 m_cs.DisableKeyword(m_keyIntKeyword);
                 m_cs.DisableKeyword(m_keyUintKeyword);
                 m_cs.EnableKeyword(m_keyFloatKeyword);
+                m_cs.DisableKeyword(m_keyUlongKeyword);
+            }
+            
+            if (_type == typeof(ulong))
+            {
+                m_cs.DisableKeyword(m_keyIntKeyword);
+                m_cs.DisableKeyword(m_keyUintKeyword);
+                m_cs.DisableKeyword(m_keyFloatKeyword);
+                m_cs.EnableKeyword(m_keyUlongKeyword);
             }
         }
 
@@ -93,6 +110,7 @@ namespace GPUSorting.Runtime
                 _cmd.EnableKeyword(m_cs, m_keyIntKeyword);
                 _cmd.DisableKeyword(m_cs, m_keyUintKeyword);
                 _cmd.DisableKeyword(m_cs, m_keyFloatKeyword);
+                _cmd.DisableKeyword(m_cs, m_keyUlongKeyword);
             }
 
             if (_type == typeof(uint))
@@ -100,6 +118,7 @@ namespace GPUSorting.Runtime
                 _cmd.DisableKeyword(m_cs, m_keyIntKeyword);
                 _cmd.EnableKeyword(m_cs, m_keyUintKeyword);
                 _cmd.DisableKeyword(m_cs, m_keyFloatKeyword);
+                _cmd.DisableKeyword(m_cs, m_keyUlongKeyword);
             }
 
             if (_type == typeof(float))
@@ -107,6 +126,15 @@ namespace GPUSorting.Runtime
                 _cmd.DisableKeyword(m_cs, m_keyIntKeyword);
                 _cmd.DisableKeyword(m_cs, m_keyUintKeyword);
                 _cmd.EnableKeyword(m_cs, m_keyFloatKeyword);
+                _cmd.DisableKeyword(m_cs, m_keyUlongKeyword);
+            }
+
+            if (_type == typeof(ulong))
+            {
+                _cmd.DisableKeyword(m_cs, m_keyIntKeyword);
+                _cmd.DisableKeyword(m_cs, m_keyUintKeyword);
+                _cmd.DisableKeyword(m_cs, m_keyFloatKeyword);
+                _cmd.EnableKeyword(m_cs, m_keyUlongKeyword);
             }
         }
 

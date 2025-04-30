@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 using System;
-using GPUPrefixSums.Runtime;
+using GPUInt64Sorting.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Unity.Profiling;
@@ -13,16 +13,6 @@ using UnityEngine.XR;
 
 namespace GaussianSplatting.Runtime
 {
-    struct GemoData
-    {
-        public int4 touched_rects;
-        public float4 conic_opacity;
-        public float4 rgb;
-        public float2 mean2D;
-        public float depth;
-        public float radius;
-    };
-    
     struct Int4Data
     {
         private int a, b, c, d;
@@ -118,26 +108,16 @@ namespace GaussianSplatting.Runtime
         
         // new tile-renderer needed buffer
         // VisibleCounts
-        internal GraphicsBuffer m_VisibleCount;
-        internal GraphicsBuffer m_VisibleBit;
-        internal GraphicsBuffer m_VisibleBitOffset;
+        internal GraphicsBuffer m_NumArgs;
         
         // GeometryState
         internal GraphicsBuffer m_GeomState_data;
-        internal GraphicsBuffer m_GeomState_left_touched_tiles;
-        internal GraphicsBuffer m_GeomState_right_touched_tiles;
-        internal GraphicsBuffer m_GeomState_left_point_offsets;
-        internal GraphicsBuffer m_GeomState_right_point_offsets;
 
         // BinningState
-        internal GraphicsBuffer m_BinState_left_point_list_depth_keys;
-        internal GraphicsBuffer m_BinState_left_point_list_tile_keys;
-        internal GraphicsBuffer m_BinState_left_point_list_depth_values;
-        internal GraphicsBuffer m_BinState_left_point_list_tile_values;
-        internal GraphicsBuffer m_BinState_right_point_list_depth_keys;
-        internal GraphicsBuffer m_BinState_right_point_list_tile_keys;
-        internal GraphicsBuffer m_BinState_right_point_list_depth_values;
-        internal GraphicsBuffer m_BinState_right_point_list_tile_values;
+        internal GraphicsBuffer m_BinState_left_point_list_keys;
+        internal GraphicsBuffer m_BinState_left_point_list_values;
+        internal GraphicsBuffer m_BinState_right_point_list_keys;
+        internal GraphicsBuffer m_BinState_right_point_list_values;
 
         // ImageState
         internal GraphicsBuffer m_ImageState_left_ranges;
@@ -145,29 +125,12 @@ namespace GaussianSplatting.Runtime
 
         GpuSorting m_Sorter;
         GpuSorting.Args m_SorterArgs;
-        private ReduceThenScan m_VisibleCountSumer;
-        private ComputeBuffer m_VisibleCountReduction;
-        private ReduceThenScan m_PrefixSumer;
-        private ComputeBuffer m_ThreadBlockReduction;
         
-        private GPUSorting.Runtime.NewForwardSweep m_FirstSweepSorter;
-        private GraphicsBuffer m_FirstAlt;
-        private GraphicsBuffer m_FirstAltPayload;
-        private ComputeBuffer m_FirstGlobalHist;
-        private ComputeBuffer m_FirstPassHist;
-        private ComputeBuffer m_FirstIndex;
-        
-        private GPUSorting.Runtime.NewForwardSweep m_SecondSweepSorter;
-        private GraphicsBuffer m_SecondAlt;
-        private GraphicsBuffer m_SecondAltPayload;
-        private ComputeBuffer m_SecondGlobalHist;
-        private ComputeBuffer m_SecondPassHist;
-        private ComputeBuffer m_SecondIndex;
-        
-        private GpuSorting m_FirstRadixSorter;
-        private GpuSorting.Args m_FirstRadixSorterArgs;
-        private GpuSorting m_SecondRadixSorter;
-        private GpuSorting.Args m_SecondRadixSorterArgs;
+        private NewDeviceRadixSort m_RadixSorter;
+        private GraphicsBuffer m_AltKey;
+        private GraphicsBuffer m_AltPayload;
+        private GraphicsBuffer m_GlobalHist;
+        private GraphicsBuffer m_PassHist;
 
         internal Material m_MatNewRenderViewData;
         internal Material m_MatSplats;
@@ -181,7 +144,6 @@ namespace GaussianSplatting.Runtime
         bool m_Registered;
 
         private int m_PreTileX, m_PreTileY;
-        private int m_NumRendered;
 
         static readonly ProfilerMarker s_ProfSort = new(ProfilerCategory.Render, "GaussianSplat.Sort", MarkerFlags.SampleGPU);
 
@@ -206,26 +168,20 @@ namespace GaussianSplatting.Runtime
             public static readonly int SHOrder = Shader.PropertyToID("_SHOrder");
             public static readonly int SHOnly = Shader.PropertyToID("_SHOnly");
             
-            public static readonly int VisibleCount = Shader.PropertyToID("_VisibleCount");
-            public static readonly int VisibleBit = Shader.PropertyToID("_VisibleBit");
+            public static readonly int NumArgs = Shader.PropertyToID("_NumArgs");
             public static readonly int GeomData = Shader.PropertyToID("_GeomData");
-            public static readonly int GeomTouchedTiles = Shader.PropertyToID("_GeomTouchedTiles");
-            public static readonly int BinPointListDepthKey = Shader.PropertyToID("_BinPointListDepthKey");
-            public static readonly int BinPointListTileKey = Shader.PropertyToID("_BinPointListTileKey");
-            public static readonly int BinPointListDepthValue = Shader.PropertyToID("_BinPointListDepthValue");
-            public static readonly int BinPointListTileValue = Shader.PropertyToID("_BinPointListTileValue");
+            public static readonly int BinPointListKey = Shader.PropertyToID("_BinPointListKey");
+            public static readonly int BinPointListValue = Shader.PropertyToID("_BinPointListValue");
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
             
-            public static readonly int RO_BinPointListDepthValue = Shader.PropertyToID("_RO_BinPointListDepthValue");
             public static readonly int RO_GeomData = Shader.PropertyToID("_RO_GeomData");
             public static readonly int RO_GeomPointOffset = Shader.PropertyToID("_RO_GeomPointOffset");
-            public static readonly int RO_BinPointListTileKey = Shader.PropertyToID("_RO_BinPointListTileKey");
+            public static readonly int RO_BinPointListKey = Shader.PropertyToID("_RO_BinPointListKey");
             public static readonly int RO_ImageLeftRange = Shader.PropertyToID("_RO_ImageLeftRange");
             public static readonly int RO_ImageRightRange = Shader.PropertyToID("_RO_ImageRightRange");
-            public static readonly int RO_BinLeftPointListTileValue = Shader.PropertyToID("_RO_BinLeftPointListTileValue");
-            public static readonly int RO_BinRightPointListTileValue = Shader.PropertyToID("_RO_BinRightPointListTileValue");
+            public static readonly int RO_BinLeftPointListValue = Shader.PropertyToID("_RO_BinLeftPointListValue");
+            public static readonly int RO_BinRightPointListValue = Shader.PropertyToID("_RO_BinRightPointListValue");
             
-            public static readonly int NumRendered = Shader.PropertyToID("_NumRendered");
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
             public static readonly int IterIndex = Shader.PropertyToID("_IterIndex");
             public static readonly int GSRenderTexture = Shader.PropertyToID("_GSRenderTexture");
@@ -269,8 +225,8 @@ namespace GaussianSplatting.Runtime
             IdentifyTileRanges,
             InitImageRanges,
             CalcRanges,
-            GetNumRendered,
-            SetVisibleCounts,
+            InitNumArgs,
+            InitSortArgs,
             RenderViewData,
         }
 
@@ -339,47 +295,31 @@ namespace GaussianSplatting.Runtime
                 0, 1, 2
             });
 
-            // InitRadixSortBuffers(splatCount);
             InitSortBuffers(splatCount);
             
             
-            // 初始化 VisibleCounts
-            m_VisibleCount = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, 4) { name = "GaussianSplatVisibleCount" };
-            uint[] zero = { 0 };
-            m_VisibleCount.SetData(zero);
+            // 初始化 NumArgs
+            m_NumArgs = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgs"};
+            // uint[] zero = new uint[8];
+            // m_NumArgs.SetData(zero);
             
             // 初始化 GeometryState
             int splatCountScale = 1;
             m_GeomState_data =
-                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 12 * 4)
+                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 8 * 4)
                     { name = "GeomStateData" };
             
-            // 由于 PrefixSum 要求 Padding 数组数量到 4 的倍数，同时 stride 必须为 16 的倍数，所以我们把数组数量对齐到 GROUP_SIZE，同时保证 GROUP_ZISE 是 4 的倍数
-            m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
-                out _);
-            int count = ((m_SplatCount + (int)gsX - 1) / (int)gsX) * (int)gsX / 4;
-            m_GeomState_left_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateLeftTouchedTilesData" };
-            m_GeomState_right_touched_tiles = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateRightTouchedTilesData" };
-            m_GeomState_left_point_offsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateLeftPointOffsetData" };
-            m_GeomState_right_point_offsets = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, 4 * 4)
-                { name = "GeomStateRightPointOffsetData" };
-            m_VisibleBit = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count , 4 * 4) { name = "GaussianSplatVisibleBit" };
-            m_VisibleBitOffset = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count , 4 * 4) { name = "GaussianSplatVisibleBitOffset" };
-            
             // BinState 中深度排序的部分，和点云点数保持相同
-            m_BinState_left_point_list_depth_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 4)
-                { name = "BinStateLeftDepthKeyData" };
-            m_BinState_left_point_list_depth_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 4)
-                { name = "BinStateLeftDepthValueData" };
-            m_BinState_left_point_list_tile_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
-                { name = "BinStateLeftTileKeyData" };
-            m_BinState_left_point_list_tile_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
-                { name = "BinStateLeftTileValueData" };
+            m_BinState_left_point_list_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 8)
+                { name = "BinStateLeftKeyData" };
+            m_BinState_left_point_list_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
+                { name = "BinStateLeftValueData" };
+            // m_BinState_right_point_list_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 8)
+            //     { name = "BinStateRightKeyData" };
+            // m_BinState_right_point_list_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
+            //     { name = "BinStateRightValueData" };
             
-            InitRadixSortBuffers(splatCount);
+            InitRadixSortBuffers(m_TileRenderCount);
 
         }
 
@@ -401,6 +341,7 @@ namespace GaussianSplatting.Runtime
                 // 把 m_ImageState_left_ranges 置为 0
                 {
                     int tile_count = tile_x * tile_y;
+                    m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.NumArgs, m_NumArgs);
                     m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.ImageRange, m_ImageState_left_ranges);
                     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.InitImageRanges, out uint gsX,
                         out _, out _);
@@ -414,69 +355,15 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        void InitRadixSortBuffers(int splatCount)
+        void InitRadixSortBuffers(int tileRenderCount)
         {
-            // 初始化计算 VisibleCount 的前缀和算法
-            DisposeBuffer(ref m_VisibleCountReduction);
-            m_VisibleCountSumer = new ReduceThenScan(
+            m_RadixSorter = new NewDeviceRadixSort(
                 m_CSSplatUtilities,
-                splatCount + 2048,
-                ref m_VisibleCountReduction);
-            
-            // 初始化前缀和算法
-            DisposeBuffer(ref m_ThreadBlockReduction);
-            m_PrefixSumer = new ReduceThenScan(
-                m_CSSplatUtilities,
-                splatCount + 2048,
-                ref m_ThreadBlockReduction);
-            
-            // 初始化第一遍的基数排序需要的资源
-            // m_FirstRadixSorterArgs.resources.Dispose();
-            // m_FirstRadixSorter = new GpuSorting(m_CSSplatUtilities);
-            // m_FirstRadixSorterArgs.inputKeys = m_BinState_left_point_list_depth_keys;
-            // m_FirstRadixSorterArgs.inputValues = m_BinState_left_point_list_depth_values;
-            // if (m_Sorter.Valid)
-            // {
-            //     m_FirstRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)splatCount);
-            // }
-            
-            // 初始化第二遍的基数排序需要的资源
-            // m_SecondRadixSorterArgs.resources.Dispose();
-            // m_SecondRadixSorter = new GpuSorting(m_CSSplatUtilities);
-            // m_SecondRadixSorterArgs.inputKeys = m_BinState_left_point_list_tile_keys;
-            // m_SecondRadixSorterArgs.inputValues = m_BinState_left_point_list_tile_values;
-            // if (m_Sorter.Valid)
-            // {
-            //     m_SecondRadixSorterArgs.resources = GpuSorting.SupportResources.Load((uint)m_TileRenderCount );
-            // }
-            
-            DisposeBuffer(ref m_FirstAlt);
-            DisposeBuffer(ref m_FirstAltPayload);
-            DisposeBuffer(ref m_FirstGlobalHist);
-            DisposeBuffer(ref m_FirstPassHist);
-            DisposeBuffer(ref m_FirstIndex);
-            m_FirstSweepSorter = new GPUSorting.Runtime.NewForwardSweep(
-                m_CSSplatUtilities,
-                m_SplatCount + 1000,
-                ref m_FirstAlt,
-                ref m_FirstAltPayload,
-                ref m_FirstGlobalHist,
-                ref m_FirstPassHist,
-                ref m_FirstIndex);
-            
-            DisposeBuffer(ref m_SecondAlt);
-            DisposeBuffer(ref m_SecondAltPayload);
-            DisposeBuffer(ref m_SecondGlobalHist);
-            DisposeBuffer(ref m_SecondPassHist);
-            DisposeBuffer(ref m_SecondIndex);
-            m_SecondSweepSorter = new GPUSorting.Runtime.NewForwardSweep(
-                m_CSSplatUtilities,
-                m_TileRenderCount + 1000,
-                ref m_SecondAlt,
-                ref m_SecondAltPayload,
-                ref m_SecondGlobalHist,
-                ref m_SecondPassHist,
-                ref m_SecondIndex);
+                tileRenderCount,
+                ref m_AltKey,
+                ref m_AltPayload,
+                ref m_GlobalHist,
+                ref m_PassHist);
         }
 
         void InitSortBuffers(int count)
@@ -611,38 +498,18 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuSortKeys);
 
             m_SorterArgs.resources.Dispose();
-            DisposeBuffer(ref m_ThreadBlockReduction);
-            DisposeBuffer(ref m_VisibleCountReduction);
-            DisposeBuffer(ref m_FirstAlt);
-            DisposeBuffer(ref m_FirstAltPayload);
-            DisposeBuffer(ref m_FirstGlobalHist);
-            DisposeBuffer(ref m_FirstPassHist);
-            DisposeBuffer(ref m_FirstIndex);
-            DisposeBuffer(ref m_SecondAlt);
-            DisposeBuffer(ref m_SecondAltPayload);
-            DisposeBuffer(ref m_SecondGlobalHist);
-            DisposeBuffer(ref m_SecondPassHist);
-            DisposeBuffer(ref m_SecondIndex);
-            m_FirstRadixSorterArgs.resources.Dispose();
-            m_SecondRadixSorterArgs.resources.Dispose();
-
-            DisposeBuffer(ref m_VisibleCount);
-            DisposeBuffer(ref m_VisibleBit);
-            DisposeBuffer(ref m_VisibleBitOffset);
+            DisposeBuffer(ref m_AltKey);
+            DisposeBuffer(ref m_AltPayload);
+            DisposeBuffer(ref m_GlobalHist);
+            DisposeBuffer(ref m_PassHist);
+            
+            DisposeBuffer(ref m_NumArgs);
             DisposeBuffer(ref m_GeomState_data);
-            DisposeBuffer(ref m_GeomState_left_touched_tiles);
-            DisposeBuffer(ref m_GeomState_right_touched_tiles);
-            DisposeBuffer(ref m_GeomState_left_point_offsets);
-            DisposeBuffer(ref m_GeomState_right_point_offsets);
-
-            DisposeBuffer(ref m_BinState_left_point_list_depth_keys);
-            DisposeBuffer(ref m_BinState_left_point_list_tile_keys);
-            DisposeBuffer(ref m_BinState_left_point_list_depth_values);
-            DisposeBuffer(ref m_BinState_left_point_list_tile_values);
-            DisposeBuffer(ref m_BinState_right_point_list_depth_keys);
-            DisposeBuffer(ref m_BinState_right_point_list_tile_keys);
-            DisposeBuffer(ref m_BinState_right_point_list_depth_values);
-            DisposeBuffer(ref m_BinState_right_point_list_tile_values);
+            
+            DisposeBuffer(ref m_BinState_left_point_list_keys);
+            DisposeBuffer(ref m_BinState_left_point_list_values);
+            DisposeBuffer(ref m_BinState_right_point_list_keys);
+            DisposeBuffer(ref m_BinState_right_point_list_values);
            
             DisposeBuffer(ref m_ImageState_left_ranges);
             DisposeBuffer(ref m_ImageState_right_ranges);
@@ -689,7 +556,7 @@ namespace GaussianSplatting.Runtime
             if (count > limitX)
             {
                 countX = MAX_DISPATCH_GROUP;
-                countY = m_SplatCount / limitX + 1;
+                countY = count / limitX + 1;
             }
             else
             {
@@ -716,13 +583,12 @@ namespace GaussianSplatting.Runtime
             // calculate view dependent data for each splat
             SetAssetDataOnCS(cmb, KernelIndices.PreProcessViewData);
             
-            // 初始化 VisibleCount
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,Props.VisibleCount, m_VisibleCount);
-            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.SetVisibleCounts,
+            // 初始化 NumArgs
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.NumArgs, m_NumArgs);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,
                 1, 1, 1);
-            // 设置 VisibleCount 和 VisibleBit
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleCount, m_VisibleCount);
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.VisibleBit, m_VisibleBit);
+            // 设置 NumArgs
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.NumArgs, m_NumArgs);
             
             // 设定 GemoState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
@@ -732,11 +598,11 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
                 new Vector4(block_x, block_y, tile_x, tile_y));
             
-            // 构造第一次排序的 key【depth】 和 value【coll_id】
+            // 构造排序的 key【tile | depth】 和 value【coll_id】
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-                Props.BinPointListDepthKey, m_BinState_left_point_list_depth_keys);
+                Props.BinPointListKey, m_BinState_left_point_list_keys);
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-                Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
+                Props.BinPointListValue, m_BinState_left_point_list_values);
 
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
@@ -787,225 +653,45 @@ namespace GaussianSplatting.Runtime
             if (cam.cameraType == CameraType.Preview)
                 return;
             
-            // 1. 销毁分配的 GraphicsBuffer
-            // DisposeBuffer(ref m_BinState_left_point_list_tile_keys);
-            // DisposeBuffer(ref m_BinState_left_point_list_tile_values);
-
-            int visibleCount = 2;
-            // 1. 获取 VisibleCount
-            {
-                m_VisibleCountSumer.PrefixSumInclusive(
-                    cmb,
-                    m_SplatCount,
-                    m_VisibleBit,
-                    m_VisibleBitOffset,
-                    m_VisibleCountReduction);
-                
-                var visiblebit_offset_list = new Int4Data[1];
-                int splat_count = m_SplatCount - 1;
-                int list_index = splat_count / 4;
-                int data_index = splat_count % 4;
-                m_VisibleBitOffset.GetData(visiblebit_offset_list, 0, list_index, 1);
-                visibleCount = Math.Min(Math.Max(visiblebit_offset_list[0].GetElement(data_index), visibleCount), 65535 * 1024);
-                Debug.Log($"bitCounts: {visibleCount}");
-                
-                // uint[] visibleCountList = new uint[1];
-                // m_VisibleCount.GetData(visibleCountList);
-                // Debug.Log($"visibleCounts: {visibleCountList[0]}");
-                Debug.Log("m_SplatCount: " + m_SplatCount);
-            }
+            // 1. 初始化 Sort 参数 buffer
+            cmb.SetComputeIntParam(m_CSSplatUtilities, "e_min", 2);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, "e_max", m_TileRenderCount);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.NumArgs, m_NumArgs);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, 1, 1, 1);
             
-            // 2. 构造第一次排序的 key【depth】 和 value【coll_id】
-            // {
-            //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-            //
-            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys, Props.GeomData,
-            //         m_GeomState_data);
-            //
-            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-            //         Props.BinPointListDepthKey, m_BinState_left_point_list_depth_keys);
-            //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-            //         Props.BinPointListDepthValue, m_BinState_left_point_list_depth_values);
-            //
-            //     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.DuplicateWithDepthKeys,
-            //         out uint gsX, out _, out _);
-            //     int count = (visibleCount + (int)gsX - 1) / (int)gsX;
-            //     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithDepthKeys,
-            //         count, 1, 1);
-            // }
-            
-            // 3. 第一次基于深度进行排序
-            // Keys = m_BinState_left_point_list_depth_keys;
-            // Values = m_BinState_left_point_list_depth_values;
-            // {
-            //     m_FirstRadixSorterArgs.count = (uint)visibleCount;
-            //     m_FirstRadixSorter.Dispatch(cmb, m_FirstRadixSorterArgs);
-            // }
-            
-            m_FirstSweepSorter.Sort(
+            // 2. 对 BinPointList 进行排序
+            m_RadixSorter.Sort(
                 cmb,
-                visibleCount,
-                m_BinState_left_point_list_depth_keys,
-                m_BinState_left_point_list_depth_values,
-                m_FirstAlt,
-                m_FirstAltPayload,
-                m_FirstGlobalHist,
-                m_FirstPassHist,
-                m_FirstIndex,
-                typeof(float),
+                m_NumArgs,
+                m_BinState_left_point_list_keys,
+                m_BinState_left_point_list_values,
+                m_AltKey,
+                m_AltPayload,
+                m_GlobalHist,
+                m_PassHist,
+                typeof(ulong),
                 typeof(uint),
-                true);
+                true
+                );
             
-            // 4. 根据排序后的 id，重新组织 touched_tiles 数组的顺序
-            {
-                cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-                
-                // 设定 tile 屏幕分块信息
-                GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
-                cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
-                    new Vector4(block_x, block_y, tile_x, tile_y));
-                
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.RO_GeomData, m_GeomState_data);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.RO_BinPointListDepthValue, m_BinState_left_point_list_depth_values);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    Props.GeomTouchedTiles, m_GeomState_left_touched_tiles);
-
-                m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.ReorderTouchedTiles,
-                    out uint gsX, out _, out _);
-                GetDispatchGroupNum(visibleCount, (int)gsX, out int countX, out int countY);
-                cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.ReorderTouchedTiles,
-                    countX, countY, 1);
-            }
-            
-            // 5. 求前缀和数组
-            {
-                m_PrefixSumer.PrefixSumInclusive(
-                    cmb,
-                    visibleCount,
-                    m_GeomState_left_touched_tiles,
-                    m_GeomState_left_point_offsets,
-                    m_ThreadBlockReduction);
-            }
-            
-            // 6. 分配 BinnState 数据
-            {
-                var number_rendered_list = new Int4Data[1];
-                int splat_count = visibleCount - 1;
-                int list_index = splat_count / 4;
-                int data_index = splat_count % 4;
-                m_GeomState_left_point_offsets.GetData(number_rendered_list, 0, list_index, 1);
-                m_NumRendered = number_rendered_list[0].GetElement(data_index);
-
-                if (m_NumRendered <= 0 || m_NumRendered >= 536870912)
-                {
-                    m_NumRendered = 1;
-                }
-
-                m_NumRendered = Math.Min(m_NumRendered, m_TileRenderCount);
-                Debug.Log("m_NumRendered: " + m_NumRendered);
-            }
-            
-            // 7. 构造第二次排序的 key【tilekey】 和 value【coll_id】
-            {
-                cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SplatCount, visibleCount);
-                
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys, Props.RO_GeomData,
-                    m_GeomState_data);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.RO_BinPointListDepthValue, m_BinState_left_point_list_depth_values);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.RO_GeomPointOffset, m_GeomState_left_point_offsets);
-                
-                GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
-                cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
-                    new Vector4(block_x, block_y, tile_x, tile_y));
-            
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.BinPointListTileKey, m_BinState_left_point_list_tile_keys);
-                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    Props.BinPointListTileValue, m_BinState_left_point_list_tile_values);
-            
-                m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.DuplicateWithTileKeys,
-                    out uint gsX, out _, out _);
-                GetDispatchGroupNum(visibleCount, (int)gsX, out int countX, out int countY);
-                cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.DuplicateWithTileKeys,
-                    countX, countY, 1);
-            }
-            
-            // 8. 第二次基数排序
-            // Keys = m_BinState_left_point_list_tile_keys;
-            // Values = m_BinState_left_point_list_tile_values;
-            // {
-            //     m_SecondRadixSorterArgs.count = (uint)m_NumRendered;
-            //     m_SecondRadixSorter.Dispatch(cmb, m_SecondRadixSorterArgs);
-            // }
-            
-            m_SecondSweepSorter.Sort(
-                cmb,
-                m_NumRendered,
-                m_BinState_left_point_list_tile_keys,
-                m_BinState_left_point_list_tile_values,
-                m_SecondAlt,
-                m_SecondAltPayload,
-                m_SecondGlobalHist,
-                m_SecondPassHist,
-                m_SecondIndex,
-                typeof(uint),
-                typeof(uint),
-                true);
-            
-            // 9. 计算 ImageState 数据
+            // 3. 计算 ImageState 数据
             {
                 EnsureImageState(cam);
                 {
-                    cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
+                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.NumArgs, m_NumArgs);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                        Props.RO_BinPointListTileKey, m_BinState_left_point_list_tile_keys);
+                        Props.RO_BinPointListKey, m_BinState_left_point_list_keys);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.ImageRange, m_ImageState_left_ranges);
                 
-                    m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.IdentifyTileRanges, out uint gsX,
-                        out _, out _);
-                    GetDispatchGroupNum(m_NumRendered, (int)gsX, out int countX, out int countY);
+                    // m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.IdentifyTileRanges, out uint gsX,
+                    //     out _, out _);
+                    // GetDispatchGroupNum(m_NumRendered, (int)gsX, out int countX, out int countY);
+                    // cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                    //     countX, countY, 1);
                     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                        countX, countY, 1);
+                        m_NumArgs, 20);
                 }
-                
-                // // DEBUG: 计算 ImageState 中 range 的和
-                // {
-                //     GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
-                //     int tile_count = tile_x * tile_y;
-                //     // Debug.Log("tile_x: " + tile_x + ", tile_y: " + tile_y);
-                //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, tile_count);
-                //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                //         Props.ImageLeftRange, m_ImageState_left_ranges);
-                //     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                //         Props.ImageRightRange, m_ImageState_right_ranges);
-                //     
-                //     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcRanges, out uint gsX,
-                //         out _, out _);
-                //     int count = (tile_count + (int)gsX - 1) / (int)gsX;
-                //     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcRanges,
-                //         count, 1, 1);
-                //     
-                //     Int2Data[] ImageRangeData = new Int2Data[m_ImageState_right_ranges.count];
-                //     m_ImageState_right_ranges.GetData(ImageRangeData);
-                //     int maxValue = 0;
-                //     int maxIndex = 0;
-                //     for (int i = 0; i < ImageRangeData.Length; ++i)
-                //     {
-                //         int currentValue = (int)ImageRangeData[i].x;
-                //         int currentIndex = (int)ImageRangeData[i].y;
-                //         if (currentValue > maxValue)
-                //         {
-                //             maxValue = currentValue;
-                //             maxIndex = currentIndex;
-                //         }
-                //     }
-                //     // Debug.Log("TileCount: " + tile_count + "; MaxValue: " + maxValue + "; MaxIndex: " + maxIndex);
-                // }
             }
         }
         
@@ -1025,11 +711,11 @@ namespace GaussianSplatting.Runtime
 
             // 设定 BinnState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
-                Props.RO_BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
+                Props.RO_BinLeftPointListValue, m_BinState_left_point_list_values);
             // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
             //     Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
             // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_BinState_left_point_list_tile_values.count);
-            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_NumRendered);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.NumArgs, m_NumArgs);
 
 
             // 设定 ImageState 的数据
@@ -1068,9 +754,9 @@ namespace GaussianSplatting.Runtime
                 m_GeomState_data);
 
             // 设定 BinnState 的数据
-            mpb.SetBuffer(Props.RO_BinLeftPointListTileValue, m_BinState_left_point_list_tile_values);
+            mpb.SetBuffer(Props.RO_BinLeftPointListValue, m_BinState_left_point_list_values);
             // mpb.SetBuffer(Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
-            mpb.SetInt(Props.NumRendered, m_NumRendered);
+            mpb.SetBuffer(Props.NumArgs, m_NumArgs);
 
 
             // 设定 ImageState 的数据
@@ -1090,9 +776,9 @@ namespace GaussianSplatting.Runtime
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
-
+            
             var tr = transform;
-
+            
             Matrix4x4 matView = cam.worldToCameraMatrix;
             Matrix4x4 matO2W = tr.localToWorldMatrix;
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
@@ -1100,21 +786,21 @@ namespace GaussianSplatting.Runtime
             int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
             Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
             Vector4 camPos = cam.transform.position;
-
+            
             // calculate view dependent data for each splat
             SetAssetDataOnCS(cmb, KernelIndices.CalcViewData);
-
+            
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixWorldToObject, matW2O);
-
+            
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecWorldSpaceCameraPos, camPos);
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatScale, m_SplatScale);
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatOpacityScale, m_OpacityScale);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOrder, m_SHOrder);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOnly, m_SHOnly ? 1 : 0);
-
+            
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.CalcViewData, out uint gsX, out _, out _);
             GetDispatchGroupNum(m_GpuView.count, (int)gsX, out int countX, out int countY);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.CalcViewData, countX, countY, 1);
@@ -1146,7 +832,7 @@ namespace GaussianSplatting.Runtime
 
             // sort the splats
             EnsureSorterAndRegister();
-            m_Sorter.Dispatch(cmd, m_SorterArgs);
+            // m_Sorter.Dispatch(cmd, m_SorterArgs);
             cmd.EndSample(s_ProfSort);
         }
 
