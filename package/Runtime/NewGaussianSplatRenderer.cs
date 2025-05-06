@@ -175,7 +175,6 @@ namespace GaussianSplatting.Runtime
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
             
             public static readonly int RO_GeomData = Shader.PropertyToID("_RO_GeomData");
-            public static readonly int RO_GeomPointOffset = Shader.PropertyToID("_RO_GeomPointOffset");
             public static readonly int RO_BinPointListKey = Shader.PropertyToID("_RO_BinPointListKey");
             public static readonly int RO_ImageLeftRange = Shader.PropertyToID("_RO_ImageLeftRange");
             public static readonly int RO_ImageRightRange = Shader.PropertyToID("_RO_ImageRightRange");
@@ -183,7 +182,6 @@ namespace GaussianSplatting.Runtime
             public static readonly int RO_BinRightPointListValue = Shader.PropertyToID("_RO_BinRightPointListValue");
             
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
-            public static readonly int IterIndex = Shader.PropertyToID("_IterIndex");
             public static readonly int GSRenderTexture = Shader.PropertyToID("_GSRenderTexture");
             
             public static readonly int DisplayIndex = Shader.PropertyToID("_DisplayIndex");
@@ -219,12 +217,8 @@ namespace GaussianSplatting.Runtime
             CalcDistances,
             CalcViewData,
             PreProcessViewData,
-            DuplicateWithDepthKeys,
-            ReorderTouchedTiles,
-            DuplicateWithTileKeys,
             IdentifyTileRanges,
             InitImageRanges,
-            CalcRanges,
             InitNumArgs,
             InitSortArgs,
             RenderViewData,
