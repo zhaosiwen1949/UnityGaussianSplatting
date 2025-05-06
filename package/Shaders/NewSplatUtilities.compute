@@ -373,7 +373,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
                 InterlockedAdd(_NumArgs[1], 1, globalBinPointIndex);
                 
                 uint depth = FloatToUint(centerClipPos.w);
-                uint64_t tile_key = y * _TileConfig.z + x;
+                uint64_t tile_key = y * (uint)_TileConfig.z + x;
                 tile_key <<= 32;
                 _BinPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));;
                 _BinPointListValue[globalBinPointIndex] = globalGemoIndex;
