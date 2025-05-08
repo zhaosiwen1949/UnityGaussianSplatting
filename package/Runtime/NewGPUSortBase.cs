@@ -17,7 +17,7 @@ namespace GPUInt64Sorting.Runtime
     public abstract class NewGPUSortBase
     {
         protected const int k_radix = 256;
-        protected const int k_radixPasses = 8;
+        protected const int k_radixPasses = 6;
         protected const int k_partitionSize = 3840;
         protected const int k_passBit = 8 * k_radixPasses;
 

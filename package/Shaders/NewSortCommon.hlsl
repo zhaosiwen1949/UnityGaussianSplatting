@@ -29,8 +29,8 @@
 #define HALF_RADIX          128U    //For smaller waves where bit packing is necessary
 #define HALF_MASK           127U    // '' 
 #define RADIX_LOG           8U      //log2(RADIX)
-#define RADIX_PASSES        8U      //(Key width) / RADIX_LOG
-#define RADIX_LAST_BIT      56U
+#define RADIX_PASSES        6U      //(Key width) / RADIX_LOG
+#define RADIX_LAST_BIT      (RADIX_PASSES - 1U) * RADIX_LOG
 
 RWStructuredBuffer<uint> e_numArgs;
 
