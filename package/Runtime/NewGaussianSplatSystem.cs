@@ -105,41 +105,14 @@ namespace GaussianSplatting.Runtime
             return true;
         }
 
-        // ReSharper disable once MemberCanBePrivate.Global - used by HDRP/URP features that are not always compiled
-        // public void NewTileRenderSplats(Camera cam, CommandBuffer cmb, TextureHandle gsRenderTexture)
-        public void NewTileRenderSplats(Camera cam, CommandBuffer cmb)
-        {
-            if (m_ActiveSplats.Count <= 0) return;
-            
-            var kvp = m_ActiveSplats[0];
-            var gs = kvp.Item1;
-            var mpb = kvp.Item2;
-            mpb.Clear();
-            
-            // PreProcess
-            cmb.BeginSample(s_ProfPreProcess);
-            gs.PreProcessViewData(cmb, cam);
-            cmb.EndSample(s_ProfPreProcess);
-                
-            // RadixSort
-            cmb.BeginSample(s_ProfRadixSort);
-            gs.RadixSortPoints(cmb, cam);
-            cmb.EndSample(s_ProfRadixSort);
-            
-            // TileRender
-            // cmb.BeginSample(s_ProfDraw);
-            // gs.RenderViewData(cmb, cam, gsRenderTexture);
-            // cmb.EndSample(s_ProfDraw);
-            
-            // New Tile Render
-            cmb.BeginSample(s_ProfDraw);
-            // gs.NewRenderViewData(cmb, cam, mpb, gsRenderTexture);
-            gs.NewRenderViewData(cmb, cam, mpb);
-            cmb.EndSample(s_ProfDraw);
-        }
-        
-        
-        public void TileRenderSplats(Camera cam, CommandBuffer cmb, TextureHandle gsRenderTexture)
+        public void TileRenderSplats(
+            Camera cam,
+            CommandBuffer cmb,
+            TextureHandle gsRenderTexture,
+            TextureHandle preDepthTexture,
+            TextureHandle currentDepthTexture,
+            Matrix4x4 preViewProjectionMatrix
+        )
         {
             if (m_ActiveSplats.Count <= 0) return;
             
@@ -148,7 +121,7 @@ namespace GaussianSplatting.Runtime
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
-            gs.PreProcessViewData(cmb, cam);
+            gs.PreProcessViewData(cmb, cam, preDepthTexture, preViewProjectionMatrix);
             cmb.EndSample(s_ProfPreProcess);
                 
             // RadixSort
@@ -158,7 +131,7 @@ namespace GaussianSplatting.Runtime
             
             // TileRender
             cmb.BeginSample(s_ProfDraw);
-            gs.RenderViewData(cmb, cam, gsRenderTexture);
+            gs.RenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
             cmb.EndSample(s_ProfDraw);
         }
         public Material SortAndRenderSplats(Camera cam, CommandBuffer cmb)

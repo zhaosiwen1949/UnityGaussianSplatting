@@ -44,6 +44,7 @@ cbuffer cbCommon : register(b0)
 float4x4 _MatrixObjectToWorld;
 float4x4 _MatrixWorldToObject;
 float4x4 _MatrixMV;
+float4x4 _MatrixPreVP;
 float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
@@ -267,6 +268,8 @@ void CSCalcViewData (uint3 id : SV_DispatchThreadID)
     _SplatViewData[idx] = view;
 }
 
+Texture2D<float> _GSPreDepthTexture;
+
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
 {
@@ -280,9 +283,17 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
     // float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
+    float4 preCenterClipPos = mul(_MatrixPreVP, float4(centerWorldPos, 1));
+    // float4 preCenterClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
+    float2 preCenterNDCPos = preCenterClipPos.xy / preCenterClipPos.w;
+    float2 preMean2d = ((preCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     
     // 视锥体剔除
     if (!InFrustum(centerClipPos)) return;
+
+    // 深度剔除
+    float preDepth = _GSPreDepthTexture.Load(int3(preMean2d.x, _VecScreenParams.y - preMean2d.y, 0));
+    if (preDepth > 0.001 && centerClipPos.w - preDepth > 0.8) return;
 
     half4 color = LoadSplatColor(idx);
     // 透明度剔除
@@ -351,6 +362,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     // 记录数据
     // _GeomData[globalGemoIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
     _GeomData[globalGemoIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
+    // _GeomData[globalGemoIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, preDepth);
     // _GeomData[globalGemoIndex].conic_opacity = centerClipPos;
     _GeomData[globalGemoIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
     _GeomData[globalGemoIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
@@ -558,6 +570,7 @@ void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
 // }
 
 RWTexture2D<float4> _GSRenderTexture;
+RWTexture2D<float> _GSDepthTexture;
 
 [numthreads(BLOCK_X, BLOCK_Y, 1)]
 void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID)
@@ -579,6 +592,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // 累计透明度、颜色和深度图输出
         float T = 1.0f;
         half3 color = 0.0f;
+        float depth = 0.0f;
 
         // 遍历 Tile 中保存的高斯数据
         // 每个 thread 负责一个像素，逐像素累计高斯数据
@@ -617,8 +631,8 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             tmp_color.b = f16tof32(_RO_GeomData[coll_id].rgb_depth.y >> 16);
             color += tmp_color * alpha * T;
 
-            // 累加深度
-            // inv_depth += (1 / _GeomData[coll_id].rgb_depth.w) * alpha * T;
+            // 纪录截至时的最大深度
+            depth = f16tof32(_RO_GeomData[coll_id].rgb_depth.y);;
             
             // 更新累积 alpha
             T = test_T;
@@ -627,5 +641,6 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // _GSRenderTexture[uint2(global_id.x, global_id.y)] = float4(group_id.xy, global_id.xy);
         
         _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(GammaToLinearSpace(color), 1.0 - T);
+        _GSDepthTexture[uint2(global_id.x, H - global_id.y)] = depth;
     }
 }

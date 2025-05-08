@@ -183,6 +183,8 @@ namespace GaussianSplatting.Runtime
             
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
             public static readonly int GSRenderTexture = Shader.PropertyToID("_GSRenderTexture");
+            public static readonly int GSPreDepthTexture = Shader.PropertyToID("_GSPreDepthTexture");
+            public static readonly int GSDepthTexture = Shader.PropertyToID("_GSDepthTexture");
             
             public static readonly int DisplayIndex = Shader.PropertyToID("_DisplayIndex");
             public static readonly int DisplayChunks = Shader.PropertyToID("_DisplayChunks");
@@ -193,6 +195,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int DstBuffer = Shader.PropertyToID("_DstBuffer");
             public static readonly int BufferSize = Shader.PropertyToID("_BufferSize");
             public static readonly int MatrixMV = Shader.PropertyToID("_MatrixMV");
+            public static readonly int MatrixPreVP = Shader.PropertyToID("_MatrixPreVP");
             public static readonly int MatrixObjectToWorld = Shader.PropertyToID("_MatrixObjectToWorld");
             public static readonly int MatrixWorldToObject = Shader.PropertyToID("_MatrixWorldToObject");
             public static readonly int VecScreenParams = Shader.PropertyToID("_VecScreenParams");
@@ -559,7 +562,7 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        internal void PreProcessViewData(CommandBuffer cmb, Camera cam)
+        internal void PreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preViewProjectionMatrix)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
@@ -597,7 +600,14 @@ namespace GaussianSplatting.Runtime
                 Props.BinPointListKey, m_BinState_left_point_list_keys);
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
                 Props.BinPointListValue, m_BinState_left_point_list_values);
-
+            
+            // 绑定上一帧的深度图
+            cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GSPreDepthTexture,
+                depthTexture);
+            
+            // 绑定上一帧的 VP 矩阵
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreVP, preViewProjectionMatrix);
+            
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixWorldToObject, matW2O);
@@ -689,7 +699,7 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        internal void RenderViewData(CommandBuffer cmb, Camera cam, TextureHandle gsRenderTexture)
+        internal void RenderViewData(CommandBuffer cmb, Camera cam, TextureHandle gsRenderTexture, TextureHandle depthTexture)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
@@ -721,6 +731,8 @@ namespace GaussianSplatting.Runtime
             // 设定输入 texture
             cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSRenderTexture,
                 gsRenderTexture);
+            cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSDepthTexture,
+                depthTexture);
             
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
                 out _);
@@ -730,40 +742,6 @@ namespace GaussianSplatting.Runtime
 
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 count_x, count_y, 1);
-        }
-        
-        // internal void NewRenderViewData(CommandBuffer cmb, Camera cam, MaterialPropertyBlock mpb, TextureHandle gsRenderTexture)
-        internal void NewRenderViewData(CommandBuffer cmb, Camera cam, MaterialPropertyBlock mpb)
-        {
-            if (cam.cameraType == CameraType.Preview)
-                return;
-
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
-            mpb.SetVector( Props.VecScreenParams, screenPar);
-
-            // 设定 GemoState 的数据
-            mpb.SetBuffer(Props.RO_GeomData,
-                m_GeomState_data);
-
-            // 设定 BinnState 的数据
-            mpb.SetBuffer(Props.RO_BinLeftPointListValue, m_BinState_left_point_list_values);
-            // mpb.SetBuffer(Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
-            mpb.SetBuffer(Props.NumArgs, m_NumArgs);
-
-
-            // 设定 ImageState 的数据
-            mpb.SetBuffer(Props.RO_ImageLeftRange, m_ImageState_left_ranges);
-            // mpb.SetBuffer(Props.ImageRightRange, m_ImageState_right_ranges);
-
-            // mpb.SetTexture(Props.GSRenderTexture, gsRenderTexture);
-            
-            int indexCount = 3;
-            int instanceCount = 1;
-            MeshTopology topology = MeshTopology.Triangles;
-            
-            cmb.DrawProcedural(m_GpuFullScreenBuffer, Matrix4x4.identity, m_MatNewRenderViewData, 0, topology, indexCount, instanceCount, mpb);
         }
         
         internal void CalcViewData(CommandBuffer cmb, Camera cam)
