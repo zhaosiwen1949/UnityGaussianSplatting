@@ -355,18 +355,17 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     col.a = min(color.a * opacityScale * h_convolution_scaling, 65000);
 
     // 采用原子加，来计算索引位置
-    // uint globalGemoIndex = idx;
-    uint globalGemoIndex;
-    InterlockedAdd(_NumArgs[0], 1, globalGemoIndex);
+    // uint globalGemoIndex;
+    // InterlockedAdd(_NumArgs[0], 1, globalGemoIndex);
     
     // 记录数据
-    // _GeomData[globalGemoIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
-    _GeomData[globalGemoIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
-    // _GeomData[globalGemoIndex].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, preDepth);
-    // _GeomData[globalGemoIndex].conic_opacity = centerClipPos;
-    _GeomData[globalGemoIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
-    _GeomData[globalGemoIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
-    _GeomData[globalGemoIndex].mean2D = mean2d;
+    // _GeomData[idx].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
+    _GeomData[idx].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, col.a);
+    // _GeomData[idx].conic_opacity = float4(conic2d.x, conic2d.y, conic2d.z, preDepth);
+    // _GeomData[idx].conic_opacity = centerClipPos;
+    _GeomData[idx].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
+    _GeomData[idx].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
+    _GeomData[idx].mean2D = mean2d;
     
     for (int y = rect_min.y; y < rect_max.y; y++)
     {
@@ -384,7 +383,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
                 uint64_t tile_key = y * (uint)_TileConfig.z + x;
                 tile_key <<= 32;
                 _BinPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));;
-                _BinPointListValue[globalBinPointIndex] = globalGemoIndex;
+                _BinPointListValue[globalBinPointIndex] = idx;
             }
         }
     }
