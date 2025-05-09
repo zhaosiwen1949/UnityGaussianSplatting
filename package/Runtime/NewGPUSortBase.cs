@@ -17,10 +17,9 @@ namespace GPUInt64Sorting.Runtime
     public abstract class NewGPUSortBase
     {
         protected const int k_radix = 256;
-        protected const int k_log_radix = 8;
         protected const int k_radixPasses = 6;
         protected const int k_partitionSize = 3840;
-        // protected const int k_passBit = k_log_radix * k_radixPasses;
+        protected const int k_passBit = 8 * k_radixPasses;
 
         protected const int k_minSize = 1;
         protected const int k_maxSize = 65535 * k_partitionSize;
@@ -34,6 +33,7 @@ namespace GPUInt64Sorting.Runtime
         protected LocalKeyword m_payloadIntKeyword;
         protected LocalKeyword m_payloadUintKeyword;
         protected LocalKeyword m_payloadFloatKeyword;
+        protected LocalKeyword m_payloadUlongKeyword;
         protected LocalKeyword m_ascendKeyword;
         protected LocalKeyword m_sortPairKeyword;
 
