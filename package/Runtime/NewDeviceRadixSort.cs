@@ -103,6 +103,8 @@ namespace GPUInt64Sorting.Runtime
 
         private void Dispatch(
             CommandBuffer _cmd,
+            int frameCount,
+            int frameIndex,
             GraphicsBuffer _numArgsBuffer,
             GraphicsBuffer _toSort,
             GraphicsBuffer _toSortPayload,
@@ -112,24 +114,41 @@ namespace GPUInt64Sorting.Runtime
             const uint argsOffset = 8;
             _cmd.DispatchCompute(m_cs, m_kernelInit, 2, 1, 1);
 
-            for (int radixShift = 0; radixShift < k_passBit; radixShift += 8)
+            int framePasses = k_radixPasses / frameCount;
+            
+            for (int i = 0; i < framePasses; i++ )
             {
+                int radixPass = frameIndex * framePasses + i;
+                int radixShift = radixPass * k_log_radix;
+                
+                var sortList = radixPass % 2 == 0 ? _toSort : _alt;
+                var sortPayloadList = radixPass % 2 == 0 ? _toSortPayload : _altPayload;
+                var altList = radixPass % 2 == 0 ? _alt : _toSort;
+                var altPayloadList = radixPass % 2 == 0 ? _altPayload : _toSortPayload;
+                
                 _cmd.SetComputeIntParam(m_cs, "e_radixShift", radixShift);
                 _cmd.SetComputeIntParam(m_cs, "e_argsOffset", (int)argsOffset / 4 - 1);
 
-                _cmd.SetComputeBufferParam(m_cs, m_kernelUpsweep, "b_sort", _toSort);
+                _cmd.SetComputeBufferParam(m_cs, m_kernelUpsweep, "b_sort", sortList);
+                // _cmd.SetComputeBufferParam(m_cs, m_kernelUpsweep, "b_sort", _toSort);
                 _cmd.DispatchCompute(m_cs, m_kernelUpsweep, _numArgsBuffer, argsOffset);
                 
                 _cmd.DispatchCompute(m_cs, m_kernelScan, k_radix, 1, 1);
                 
-                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sort", _toSort);
-                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sortPayload", _toSortPayload);
-                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_alt", _alt);
-                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_altPayload", _altPayload);
+                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sort", sortList);
+                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sortPayload", sortPayloadList);
+                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_alt", altList);
+                _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_altPayload", altPayloadList);
                 _cmd.DispatchCompute(m_cs, m_kernelDownsweep, _numArgsBuffer, argsOffset);
                 
-                (_toSort, _alt) = (_alt, _toSort);
-                (_toSortPayload, _altPayload) = (_altPayload, _toSortPayload);
+                // _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sort", _toSort);
+                // _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_sortPayload", _toSortPayload);
+                // _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_alt", _alt);
+                // _cmd.SetComputeBufferParam(m_cs, m_kernelDownsweep, "b_altPayload", _altPayload);
+                // _cmd.DispatchCompute(m_cs, m_kernelDownsweep, _numArgsBuffer, argsOffset);
+                //
+                // (_toSort, _alt) = (_alt, _toSort);
+                // (_toSortPayload, _altPayload) = (_altPayload, _toSortPayload);
             }
         }
         
@@ -149,6 +168,8 @@ namespace GPUInt64Sorting.Runtime
 
         public void Sort(
             CommandBuffer cmd,
+            int frameCount,
+            int frameIndex,
             GraphicsBuffer sortSize,
             GraphicsBuffer toSort,
             GraphicsBuffer toSortPayload,
@@ -169,7 +190,7 @@ namespace GPUInt64Sorting.Runtime
                 sortSize,
                 tempPassHistBuffer,
                 tempGlobalHistBuffer);
-            Dispatch(cmd, sortSize, toSort, toSortPayload, tempKeyBuffer, tempPayloadBuffer);
+            Dispatch(cmd, frameCount, frameIndex, sortSize, toSort, toSortPayload, tempKeyBuffer, tempPayloadBuffer);
         }
     }
 }

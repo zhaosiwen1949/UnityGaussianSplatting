@@ -63,7 +63,7 @@ StructuredBuffer<uint> _RO_BinLeftPointListValue;
 StructuredBuffer<uint> _RO_BinRightPointListValue;
 
 float4 _TileConfig;
-int _IterIndex;
+int _NeedCalcBinPointList;
 
 RWStructuredBuffer<uint> _SplatSortDistances;
 RWStructuredBuffer<uint> _SplatSortKeys;
@@ -355,9 +355,9 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     col.a = min(color.a * opacityScale * h_convolution_scaling, 65000);
 
     // 采用原子加，来计算索引位置
-    // uint globalGemoIndex = idx;
-    uint globalGemoIndex;
-    InterlockedAdd(_NumArgs[0], 1, globalGemoIndex);
+    uint globalGemoIndex = idx;
+    // uint globalGemoIndex;
+    // InterlockedAdd(_NumArgs[0], 1, globalGemoIndex);
     
     // 记录数据
     // _GeomData[globalGemoIndex].touched_rects = int4(rect_min.x, rect_min.y, rect_max.x, rect_max.y);
@@ -367,24 +367,27 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomData[globalGemoIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
     _GeomData[globalGemoIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerClipPos.w);
     _GeomData[globalGemoIndex].mean2D = mean2d;
-    
-    for (int y = rect_min.y; y < rect_max.y; y++)
+
+    if (_NeedCalcBinPointList > 0)
     {
-        for (int x = rect_min.x; x < rect_max.x; x++)
+        for (int y = rect_min.y; y < rect_max.y; y++)
         {
-            float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
-            float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
-            if (BlockContainsCenter(pix_min, pix_max, mean2d) ||
-                BlockIntersectEllipse(pix_min, pix_max, mean2d, float4(conic2d.x, conic2d.y, conic2d.z, col.a)))
+            for (int x = rect_min.x; x < rect_max.x; x++)
             {
-                uint globalBinPointIndex;
-                InterlockedAdd(_NumArgs[1], 1, globalBinPointIndex);
+                float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
+                float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
+                if (BlockContainsCenter(pix_min, pix_max, mean2d) ||
+                    BlockIntersectEllipse(pix_min, pix_max, mean2d, float4(conic2d.x, conic2d.y, conic2d.z, col.a)))
+                {
+                    uint globalBinPointIndex;
+                    InterlockedAdd(_NumArgs[1], 1, globalBinPointIndex);
                 
-                uint depth = FloatToUint(centerClipPos.w);
-                uint64_t tile_key = y * (uint)_TileConfig.z + x;
-                tile_key <<= 32;
-                _BinPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));;
-                _BinPointListValue[globalBinPointIndex] = globalGemoIndex;
+                    uint depth = FloatToUint(centerClipPos.w);
+                    uint64_t tile_key = y * (uint)_TileConfig.z + x;
+                    tile_key <<= 32;
+                    _BinPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));;
+                    _BinPointListValue[globalBinPointIndex] = globalGemoIndex;
+                }
             }
         }
     }
@@ -433,13 +436,17 @@ void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
 void CSInitNumArgs (uint3 global_id : SV_DispatchThreadID)
 {
     _NumArgs[0] = 0;
-    _NumArgs[1] = 0;
-    _NumArgs[2] = 1;
-    _NumArgs[3] = 1;
-    _NumArgs[4] = 1;
-    _NumArgs[5] = 1;
-    _NumArgs[6] = 1;
-    _NumArgs[7] = 1;
+
+    if (_NeedCalcBinPointList > 0)
+    {
+        _NumArgs[1] = 0;
+        _NumArgs[2] = 1;
+        _NumArgs[3] = 1;
+        _NumArgs[4] = 1;
+        _NumArgs[5] = 1;
+        _NumArgs[6] = 1;
+        _NumArgs[7] = 1;
+    }
 }
 
 [numthreads(1, 1, 1)]
