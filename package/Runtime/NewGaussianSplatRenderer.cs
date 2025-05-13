@@ -79,6 +79,8 @@ namespace GaussianSplatting.Runtime
         [Range(1,30)] [Tooltip("Sort splats only every N frames")]
         public int m_SortNthFrame = 1;
 
+        [Range(1, 10)] public int m_TileScale = 2;
+
         public RenderMode m_RenderMode = RenderMode.Splats;
         [Range(1.0f,15.0f)] public float m_PointDisplaySize = 3.0f;
 
@@ -182,6 +184,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int RO_BinRightPointListValue = Shader.PropertyToID("_RO_BinRightPointListValue");
             
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
+            public static readonly int TileScale = Shader.PropertyToID("_TileScale");
             public static readonly int GSRenderTexture = Shader.PropertyToID("_GSRenderTexture");
             public static readonly int GSPreDepthTexture = Shader.PropertyToID("_GSPreDepthTexture");
             public static readonly int GSDepthTexture = Shader.PropertyToID("_GSDepthTexture");
@@ -342,9 +345,9 @@ namespace GaussianSplatting.Runtime
                     m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.ImageRange, m_ImageState_left_ranges);
                     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.InitImageRanges, out uint gsX,
                         out _, out _);
-                    int count = (tile_count + (int)gsX - 1) / (int)gsX;
+                    GetDispatchGroupNum(tile_count, (int)gsX, out int countX, out int countY);
                     m_CSSplatUtilities.Dispatch( (int)KernelIndices.InitImageRanges,
-                        count, 1, 1);
+                        countX, countY, 1);
                 }
                 
                 m_PreTileX = tile_x;
@@ -541,8 +544,8 @@ namespace GaussianSplatting.Runtime
             int screen_height = eyeH != 0 ? eyeH : screenH;
             cs.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
                 out _);
-            blockX = (int)gsX;
-            blockY = (int)gsY;
+            blockX = (int)gsX * m_TileScale;
+            blockY = (int)gsY * m_TileScale;
             tileX = (screen_width + blockX - 1) / blockX;
             tileY = (screen_height + blockY - 1) / blockY;
         }
@@ -703,7 +706,11 @@ namespace GaussianSplatting.Runtime
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
-
+            
+            // 设置 TileScale 分块放缩比例
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileScale, m_TileScale);
+            
+            // 设置屏幕像素大小
             int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
             int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
             Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
@@ -736,9 +743,9 @@ namespace GaussianSplatting.Runtime
             
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
                 out _);
-            int count_x = ((int)screenPar.x + (int)gsX - 1) / (int)gsX;
+            int count_x = (((int)screenPar.x + (int)gsX - 1) / (int)gsX) * m_TileScale;
 
-            int count_y = ((int)screenPar.y + (int)gsY - 1) / (int)gsY;
+            int count_y = (((int)screenPar.y + (int)gsY - 1) / (int)gsY) * m_TileScale;
 
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 count_x, count_y, 1);

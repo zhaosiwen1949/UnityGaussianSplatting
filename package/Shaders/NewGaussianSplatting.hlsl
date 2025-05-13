@@ -5,8 +5,8 @@
 #define MAX_DISPATCH_GROUP 65535
 #define GROUP_SIZE 128
 
-#define BLOCK_X 16
-#define BLOCK_Y 16
+#define BLOCK_X 8
+#define BLOCK_Y 8
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define TEST_ALPHA 0.001
 #define LN2 0.693147180559945

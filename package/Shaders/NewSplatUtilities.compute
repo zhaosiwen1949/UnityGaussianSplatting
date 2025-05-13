@@ -63,7 +63,7 @@ StructuredBuffer<uint> _RO_BinLeftPointListValue;
 StructuredBuffer<uint> _RO_BinRightPointListValue;
 
 float4 _TileConfig;
-int _IterIndex;
+uint _TileScale;
 
 RWStructuredBuffer<uint> _SplatSortDistances;
 RWStructuredBuffer<uint> _SplatSortKeys;
@@ -595,7 +595,9 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 {
     float W = _VecScreenParams.x;
     float H = _VecScreenParams.y;
-    uint horizontal_blocks = (uint)((W + BLOCK_X - 1) / BLOCK_X);
+    uint block_x = BLOCK_X * _TileScale;
+    uint horizontal_blocks = (uint)((W + block_x - 1) / block_x);
+    group_id.xy /= _TileScale;
     
     if (global_id.x < W && global_id.y < H)
     {
