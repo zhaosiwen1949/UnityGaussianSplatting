@@ -23,7 +23,79 @@ uint SwizzleDispatchThreadId(uint3 id)
     return id.x + id.y * MAX_DISPATCH_GROUP * GROUP_SIZE;
 }
 
-bool SegmentIntersectEllipse(float a, float b, float c, float d, float l, float r)
+inline float2 ComputeEllipseIntersection(
+    const float3 con_o, const float disc, const float t, const float2 p,
+    const bool isY, const float coord)
+{
+    float p_u = isY ? p.y : p.x;
+    float p_v = isY ? p.x : p.y;
+    float coeff = isY ? con_o.x : con_o.z;
+
+    float h = coord - p_u;  // h = y - p.y for y, x - p.x for x
+    float sqrt_term = sqrt(disc * h * h + t * coeff);
+
+    return float2(
+        (-con_o.y * h - sqrt_term) / coeff + p_v,
+        (-con_o.y * h + sqrt_term) / coeff + p_v
+    );
+}
+
+bool DuplicateToTilesTouched(
+    const float2 p, const float3 cov2d, const float alpha, const float4 tile_config,
+    out float3 con_o, out int2 rect_min, out int2 rect_max)
+{
+    //  ---- SNUGBOX Code ---- //
+    float a = cov2d.x;
+    float b = cov2d.y;
+    float d = cov2d.z;
+    float det = a * d - b * b; // matrix is symmetric, so "c" is same as "b"
+    if (det == 0.0f) return false;
+
+    float det_inv = 1.0f / det;
+    con_o = float3(cov2d.z * det_inv, cov2d.y * det_inv, cov2d.x * det_inv);
+
+    // Calculate discriminant
+    float disc = con_o.y * con_o.y - con_o.x * con_o.z;
+
+    // If ill-formed ellipse, return 0
+    if (con_o.x <= 0 || con_o.z <= 0 || disc >= 0) {
+        return false;
+    }
+
+    // Threshold: opacity * Gaussian = 1 / 255
+    float t = 2.0f * log(alpha * 16.0f);
+
+    float x_term = sqrt(-(con_o.y * con_o.y * t) / (disc * con_o.x));
+    x_term = (con_o.y < 0) ? x_term : -x_term;
+    float y_term = sqrt(-(con_o.y * con_o.y * t) / (disc * con_o.z));
+    y_term = (con_o.y < 0) ? y_term : -y_term;
+
+    float2 bbox_argmin = float2( p.y - y_term, p.x - x_term );
+    float2 bbox_argmax = float2( p.y + y_term, p.x + x_term );
+    
+    float2 bbox_min = float2(
+        ComputeEllipseIntersection(con_o, disc, t, p, true, bbox_argmin.x).x,
+        ComputeEllipseIntersection(con_o, disc, t, p, false, bbox_argmin.y).x
+    );
+    float2 bbox_max = float2(
+        ComputeEllipseIntersection(con_o, disc, t, p, true, bbox_argmax.x).y,
+        ComputeEllipseIntersection(con_o, disc, t, p, false, bbox_argmax.y).y
+    );
+
+    // Rectangular tile extent of ellipse
+    rect_min = int2(
+        clamp((int)(bbox_min.x / tile_config.x), 0, (int)tile_config.z),
+        clamp((int)(bbox_min.y / tile_config.y), 0, (int)tile_config.w)
+    );
+    rect_max = int2(
+        clamp((int)(bbox_max.x / tile_config.x + 1), 0, (int)tile_config.z),
+        clamp((int)(bbox_max.y / tile_config.y + 1), 0, (int)tile_config.w)
+    );
+
+    return true;
+}
+
+inline bool SegmentIntersectEllipse(float a, float b, float c, float d, float l, float r)
 {
     float delta = b * b - 4.0f * a * c;
     // return delta >= 0.0f && t1 <= sqrt(delta) && t2 >= -sqrt(delta)
@@ -32,12 +104,12 @@ bool SegmentIntersectEllipse(float a, float b, float c, float d, float l, float 
     return delta >= 0.0f && (t1 <= 0.0f || t1 * t1 <= delta) && (t2 >= 0.0f || t2 * t2 <= delta);
 }
 
-bool BlockContainsCenter(float2 pix_min, float2 pix_max, float2 center)
+inline bool BlockContainsCenter(float2 pix_min, float2 pix_max, float2 center)
 {
     return center.x >= pix_min.x && center.x <= pix_max.x && center.y >= pix_min.y && center.y <= pix_max.y;
 }
 
-bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4 conic)
+inline bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4 conic)
 {
     float a, b, c, dx, dy;
     float w = 2.0f * LN2 * log2(256 * conic.w);
@@ -52,7 +124,7 @@ bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4
     }
 
     a = conic.z;
-    b = 2.0f * conic.y * dx;
+    b = -2.0f * conic.y * dx;
     c = conic.x * dx * dx - w;
 
     if (SegmentIntersectEllipse(a, b, c, center.y, pix_min.y, pix_max.y))
@@ -69,7 +141,7 @@ bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4
         dy = center.y - pix_max.y;
     }
     a = conic.x;
-    b = 2.0f * conic.y * dy;
+    b = -2.0f * conic.y * dy;
     c = conic.z * dy * dy - w;
 
     if (SegmentIntersectEllipse(a, b, c, center.x, pix_min.x, pix_max.x))
