@@ -111,7 +111,7 @@ bool DecomposeCovariance2DRadius(float3 cov2d, float alpha, out float width, out
 
     // same as in antimatter15/splat
     // const float q = 2.0f;
-    const float q = abs(LN2 * log2( 16 * alpha));
+    const float q = abs(LN2 * log2(16 * alpha));
     // float r = length(float2((a - d) / 2.0, b));
     // float lambda1 = mean + r;
     // float lambda2 = max(mean - r, 0.1);
