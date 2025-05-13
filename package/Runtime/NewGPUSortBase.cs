@@ -58,14 +58,14 @@ namespace GPUInt64Sorting.Runtime
         protected void InitializeKeywords()
         {
             m_ascendKeyword = new LocalKeyword(m_cs, "SHOULD_ASCEND");
-            m_sortPairKeyword = new LocalKeyword(m_cs, "SORT_PAIRS");
-            m_keyUintKeyword = new LocalKeyword(m_cs, "KEY_UINT");
-            m_keyIntKeyword = new LocalKeyword(m_cs, "KEY_INT");
-            m_keyFloatKeyword = new LocalKeyword(m_cs, "KEY_FLOAT");
-            m_keyUlongKeyword = new LocalKeyword(m_cs, "KEY_ULONG");
-            m_payloadUintKeyword = new LocalKeyword(m_cs, "PAYLOAD_UINT");
-            m_payloadIntKeyword = new LocalKeyword(m_cs, "PAYLOAD_INT");
-            m_payloadFloatKeyword = new LocalKeyword(m_cs, "PAYLOAD_FLOAT");
+            // m_sortPairKeyword = new LocalKeyword(m_cs, "SORT_PAIRS");
+            // m_keyUintKeyword = new LocalKeyword(m_cs, "KEY_UINT");
+            // m_keyIntKeyword = new LocalKeyword(m_cs, "KEY_INT");
+            // m_keyFloatKeyword = new LocalKeyword(m_cs, "KEY_FLOAT");
+            // m_keyUlongKeyword = new LocalKeyword(m_cs, "KEY_ULONG");
+            // m_payloadUintKeyword = new LocalKeyword(m_cs, "PAYLOAD_UINT");
+            // m_payloadIntKeyword = new LocalKeyword(m_cs, "PAYLOAD_INT");
+            // m_payloadFloatKeyword = new LocalKeyword(m_cs, "PAYLOAD_FLOAT");
         }
 
         protected void SetKeyTypeKeywords(System.Type _type)

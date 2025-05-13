@@ -676,8 +676,6 @@ namespace GaussianSplatting.Runtime
                 m_AltPayload,
                 m_GlobalHist,
                 m_PassHist,
-                typeof(ulong),
-                typeof(uint),
                 true
                 );
             

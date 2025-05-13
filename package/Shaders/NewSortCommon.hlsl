@@ -45,30 +45,36 @@ inline uint getThreadBlocks()
 }
 
 
-#if defined(KEY_UINT)
-RWStructuredBuffer<uint> b_sort;
-RWStructuredBuffer<uint> b_alt;
-#elif defined(KEY_INT)
-RWStructuredBuffer<int> b_sort;
-RWStructuredBuffer<int> b_alt;
-#elif defined(KEY_FLOAT)
-RWStructuredBuffer<float> b_sort;
-RWStructuredBuffer<float> b_alt;
-#elif defined(KEY_ULONG)
+// #if defined(KEY_UINT)
+// RWStructuredBuffer<uint> b_sort;
+// RWStructuredBuffer<uint> b_alt;
+// #elif defined(KEY_INT)
+// RWStructuredBuffer<int> b_sort;
+// RWStructuredBuffer<int> b_alt;
+// #elif defined(KEY_FLOAT)
+// RWStructuredBuffer<float> b_sort;
+// RWStructuredBuffer<float> b_alt;
+// #elif defined(KEY_ULONG)
+// RWStructuredBuffer<uint64_t> b_sort;
+// RWStructuredBuffer<uint64_t> b_alt;
+// #endif
+
 RWStructuredBuffer<uint64_t> b_sort;
 RWStructuredBuffer<uint64_t> b_alt;
-#endif
 
-#if defined(PAYLOAD_UINT)
+// #if defined(PAYLOAD_UINT)
+// RWStructuredBuffer<uint> b_sortPayload;
+// RWStructuredBuffer<uint> b_altPayload;
+// #elif defined(PAYLOAD_INT)
+// RWStructuredBuffer<int> b_sortPayload;
+// RWStructuredBuffer<int> b_altPayload;
+// #elif defined(PAYLOAD_FLOAT)
+// RWStructuredBuffer<float> b_sortPayload;
+// RWStructuredBuffer<float> b_altPayload;
+// #endif
+
 RWStructuredBuffer<uint> b_sortPayload;
 RWStructuredBuffer<uint> b_altPayload;
-#elif defined(PAYLOAD_INT)
-RWStructuredBuffer<int> b_sortPayload;
-RWStructuredBuffer<int> b_altPayload;
-#elif defined(PAYLOAD_FLOAT)
-RWStructuredBuffer<float> b_sortPayload;
-RWStructuredBuffer<float> b_altPayload;
-#endif
 
 groupshared uint g_d_high[D_TOTAL_SMEM];
 groupshared uint g_d[D_TOTAL_SMEM]; //Shared memory for DigitBinningPass and DownSweep kernels
@@ -247,18 +253,24 @@ inline void ClearWaveHists(uint gtid)
     }    
 }
 
+// inline void LoadKey(inout uint64_t key, uint index)
+// // inline void LoadKey(inout uint key, uint index)
+// {
+// #if defined(KEY_UINT)
+//     key = b_sort[index];
+// #elif defined(KEY_INT)
+//     key = UintToInt(b_sort[index]);
+// #elif defined(KEY_FLOAT)
+//     key = FloatToUint(b_sort[index]);
+// #elif defined(KEY_ULONG)
+//     key = b_sort[index];
+// #endif
+// }
+
 inline void LoadKey(inout uint64_t key, uint index)
 // inline void LoadKey(inout uint key, uint index)
 {
-#if defined(KEY_UINT)
     key = b_sort[index];
-#elif defined(KEY_INT)
-    key = UintToInt(b_sort[index]);
-#elif defined(KEY_FLOAT)
-    key = FloatToUint(b_sort[index]);
-#elif defined(KEY_ULONG)
-    key = b_sort[index];
-#endif
 }
 
 inline void LoadDummyKey(inout uint64_t key)
@@ -603,26 +615,36 @@ inline uint DescendingIndex(uint deviceIndex)
     return getNumKeys() - deviceIndex - 1;
 }
 
+// inline void WriteKey(uint deviceIndex, uint groupSharedIndex)
+// {
+// #if defined(KEY_UINT)
+// b_alt[deviceIndex] = g_d[groupSharedIndex];
+// #elif defined(KEY_INT)
+// b_alt[deviceIndex] = UintToInt(g_d[groupSharedIndex]);
+// #elif defined(KEY_FLOAT)
+// b_alt[deviceIndex] = UintToFloat(g_d[groupSharedIndex]);
+// #elif defined(KEY_ULONG)
+// b_alt[deviceIndex] = getGD(groupSharedIndex);
+// #endif
+// }
+
 inline void WriteKey(uint deviceIndex, uint groupSharedIndex)
 {
-#if defined(KEY_UINT)
-b_alt[deviceIndex] = g_d[groupSharedIndex];
-#elif defined(KEY_INT)
-b_alt[deviceIndex] = UintToInt(g_d[groupSharedIndex]);
-#elif defined(KEY_FLOAT)
-b_alt[deviceIndex] = UintToFloat(g_d[groupSharedIndex]);
-#elif defined(KEY_ULONG)
-b_alt[deviceIndex] = getGD(groupSharedIndex);
-#endif
+    b_alt[deviceIndex] = getGD(groupSharedIndex);
 }
+
+// inline void LoadPayload(inout uint payload, uint deviceIndex)
+// {
+// #if defined(PAYLOAD_UINT)
+//     payload = b_sortPayload[deviceIndex];
+// #elif defined(PAYLOAD_INT) || defined(PAYLOAD_FLOAT)
+//     payload = asuint(b_sortPayload[deviceIndex]);
+// #endif
+// }
 
 inline void LoadPayload(inout uint payload, uint deviceIndex)
 {
-#if defined(PAYLOAD_UINT)
     payload = b_sortPayload[deviceIndex];
-#elif defined(PAYLOAD_INT) || defined(PAYLOAD_FLOAT)
-    payload = asuint(b_sortPayload[deviceIndex]);
-#endif
 }
 
 inline void ScatterPayloadsShared(OffsetStruct offsets, PayloadStruct payloads)
@@ -634,15 +656,20 @@ inline void ScatterPayloadsShared(OffsetStruct offsets, PayloadStruct payloads)
     }
 }
 
+// inline void WritePayload(uint deviceIndex, uint groupSharedIndex)
+// {
+// #if defined(PAYLOAD_UINT)
+//     b_altPayload[deviceIndex] = g_d[groupSharedIndex];
+// #elif defined(PAYLOAD_INT)
+//     b_altPayload[deviceIndex] = asint(g_d[groupSharedIndex]);
+// #elif defined(PAYLOAD_FLOAT)
+//     b_altPayload[deviceIndex] = asfloat(g_d[groupSharedIndex]);
+// #endif
+// }
+
 inline void WritePayload(uint deviceIndex, uint groupSharedIndex)
 {
-#if defined(PAYLOAD_UINT)
     b_altPayload[deviceIndex] = g_d[groupSharedIndex];
-#elif defined(PAYLOAD_INT)
-    b_altPayload[deviceIndex] = asint(g_d[groupSharedIndex]);
-#elif defined(PAYLOAD_FLOAT)
-    b_altPayload[deviceIndex] = asfloat(g_d[groupSharedIndex]);
-#endif
 }
 
 //*****************************************************************************
@@ -791,19 +818,30 @@ inline void ScatterPairsDevice(
 #endif
 }
 
+// inline void ScatterDevice(
+//     uint gtid,
+//     uint partIndex,
+//     OffsetStruct offsets)
+// {
+// #if defined(SORT_PAIRS)
+//     ScatterPairsDevice(
+//         gtid,
+//         partIndex,
+//         offsets);
+// #else
+//     ScatterKeysOnlyDevice(gtid);
+// #endif
+// }
+
 inline void ScatterDevice(
     uint gtid,
     uint partIndex,
     OffsetStruct offsets)
 {
-#if defined(SORT_PAIRS)
     ScatterPairsDevice(
         gtid,
         partIndex,
         offsets);
-#else
-    ScatterKeysOnlyDevice(gtid);
-#endif
 }
 
 //*****************************************************************************
@@ -982,17 +1020,28 @@ inline void ScatterPairsDevicePartial(
 #endif
 }
 
+// inline void ScatterDevicePartial(
+//     uint gtid,
+//     uint partIndex,
+//     OffsetStruct offsets)
+// {
+// #if defined(SORT_PAIRS)
+//     ScatterPairsDevicePartial(
+//         gtid,
+//         partIndex,
+//         offsets);
+// #else
+//     ScatterKeysOnlyDevicePartial(gtid, partIndex);
+// #endif
+// }
+
 inline void ScatterDevicePartial(
     uint gtid,
     uint partIndex,
     OffsetStruct offsets)
 {
-#if defined(SORT_PAIRS)
     ScatterPairsDevicePartial(
         gtid,
         partIndex,
         offsets);
-#else
-    ScatterKeysOnlyDevicePartial(gtid, partIndex);
-#endif
 }

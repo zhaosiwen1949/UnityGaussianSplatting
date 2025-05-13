@@ -33,7 +33,7 @@ namespace GPUInt64Sorting.Runtime
                 allocationSize)
         {
             InitKernels();
-            m_cs.EnableKeyword(m_sortPairKeyword);
+            // m_cs.EnableKeyword(m_sortPairKeyword);
             k_keysOnly = false;
 
             tempKeyBuffer?.Dispose();
@@ -163,6 +163,26 @@ namespace GPUInt64Sorting.Runtime
             AssertChecksPairs(keyType, payloadType);
             SetKeyTypeKeywords(cmd, keyType);
             SetPayloadTypeKeywords(cmd, payloadType);
+            SetAscendingKeyWords(cmd, shouldAscend);
+            SetStaticRootParameters(
+                cmd,
+                sortSize,
+                tempPassHistBuffer,
+                tempGlobalHistBuffer);
+            Dispatch(cmd, sortSize, toSort, toSortPayload, tempKeyBuffer, tempPayloadBuffer);
+        }
+        
+        public void Sort(
+            CommandBuffer cmd,
+            GraphicsBuffer sortSize,
+            GraphicsBuffer toSort,
+            GraphicsBuffer toSortPayload,
+            GraphicsBuffer tempKeyBuffer,
+            GraphicsBuffer tempPayloadBuffer,
+            GraphicsBuffer tempGlobalHistBuffer,
+            GraphicsBuffer tempPassHistBuffer,
+            bool shouldAscend)
+        {
             SetAscendingKeyWords(cmd, shouldAscend);
             SetStaticRootParameters(
                 cmd,

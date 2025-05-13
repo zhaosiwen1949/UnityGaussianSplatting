@@ -38,6 +38,26 @@ void InitDeviceRadixSort(int3 id : SV_DispatchThreadID)
 //UPSWEEP KERNEL
 //*****************************************************************************
 //histogram, 64 threads to a histogram
+// inline void HistogramDigitCounts(uint gtid, uint gid)
+// {
+//     const uint histOffset = gtid / 64 * RADIX;
+//     const uint partitionEnd = gid == getThreadBlocks() - 1 ?
+//         getNumKeys() : (gid + 1) * PART_SIZE;
+//     for (uint i = gtid + gid * PART_SIZE; i < partitionEnd; i += US_DIM)
+//     {
+// #if defined(KEY_UINT)
+//         InterlockedAdd(g_us[ExtractDigit(b_sort[i]) + histOffset], 1);
+// #elif defined(KEY_INT)
+//         InterlockedAdd(g_us[ExtractDigit(IntToUint(b_sort[i])) + histOffset], 1);
+// #elif defined(KEY_FLOAT)
+//         InterlockedAdd(g_us[ExtractDigit(FloatToUint(b_sort[i])) + histOffset], 1);
+// #elif defined(KEY_ULONG)
+//         InterlockedAdd(g_us[ExtractDigit(b_sort[i]) + histOffset], 1);
+// #endif
+//     }
+// }
+
+//histogram, 64 threads to a histogram
 inline void HistogramDigitCounts(uint gtid, uint gid)
 {
     const uint histOffset = gtid / 64 * RADIX;
@@ -45,15 +65,7 @@ inline void HistogramDigitCounts(uint gtid, uint gid)
         getNumKeys() : (gid + 1) * PART_SIZE;
     for (uint i = gtid + gid * PART_SIZE; i < partitionEnd; i += US_DIM)
     {
-#if defined(KEY_UINT)
         InterlockedAdd(g_us[ExtractDigit(b_sort[i]) + histOffset], 1);
-#elif defined(KEY_INT)
-        InterlockedAdd(g_us[ExtractDigit(IntToUint(b_sort[i])) + histOffset], 1);
-#elif defined(KEY_FLOAT)
-        InterlockedAdd(g_us[ExtractDigit(FloatToUint(b_sort[i])) + histOffset], 1);
-#elif defined(KEY_ULONG)
-        InterlockedAdd(g_us[ExtractDigit(b_sort[i]) + histOffset], 1);
-#endif
     }
 }
 
