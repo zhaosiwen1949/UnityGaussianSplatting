@@ -52,7 +52,7 @@ bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4
     }
 
     a = conic.z;
-    b = -2.0f * conic.y * dx;
+    b = 2.0f * conic.y * dx;
     c = conic.x * dx * dx - w;
 
     if (SegmentIntersectEllipse(a, b, c, center.y, pix_min.y, pix_max.y))
@@ -69,7 +69,7 @@ bool BlockIntersectEllipse(float2 pix_min, float2 pix_max, float2 center, float4
         dy = center.y - pix_max.y;
     }
     a = conic.x;
-    b = -2.0f * conic.y * dy;
+    b = 2.0f * conic.y * dy;
     c = conic.z * dy * dy - w;
 
     if (SegmentIntersectEllipse(a, b, c, center.x, pix_min.x, pix_max.x))
