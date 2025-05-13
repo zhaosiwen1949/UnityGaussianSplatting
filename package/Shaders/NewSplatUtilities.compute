@@ -298,14 +298,18 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     if (preDepth > 0.001 && centerClipPos.w - preDepth > 0.8) return;
 
     half4 color = LoadSplatColor(idx);
+    
     // 透明度剔除
-    // if ((color.r < 0.000000000001f &&
-    //     color.g < 0.000000000001f &&
-    //     color.b < 0.000000000001f) ||
-    //     color.a * 225.0f < 1.0f
-    //     ) return;
+    // 1 / 255 = 0.0039;
+    if (color.a * 225.0f < 0.004f) return;
 
-    if (color.a * 225.0f < 1.0f) return;
+    bool loadColorFlag = true;
+    if (color.r < 0.004f &&
+        color.g < 0.004f &&
+        color.b < 0.004f)
+    {
+        loadColorFlag = false;
+    }
     
     // 解算 3D 高斯的协方差矩阵
     half opacityScale = _SplatOpacityScale;
@@ -354,18 +358,20 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
         return;
     
     // 求解 SH 球谐函数，得到颜色数据
-    float3 objViewDir = mul((float3x3)_MatrixWorldToObject, worldViewDir);
-    objViewDir = normalize(objViewDir);
-    SplatSHData sh = LoadSplatSH(idx);
-    sh.col = color.rgb;
     float4 col;
-    col.rgb = ShadeSH(sh, objViewDir, _SHOrder, _SHOnly != 0);
+    if (loadColorFlag)
+    {
+        float3 objViewDir = mul((float3x3)_MatrixWorldToObject, worldViewDir);
+        objViewDir = normalize(objViewDir);
+        SplatSHData sh = LoadSplatSH(idx);
+        sh.col = color.rgb;
+        col.rgb = ShadeSH(sh, objViewDir, _SHOrder, _SHOnly != 0);
+    }
+    else
+    {
+        col.rgb = color.rgb;
+    }
     col.a = min(color.a * opacityScale * h_convolution_scaling, 65000);
-
-    // if (col.r == 0.0f &&
-    //     col.g == 0.0f &&
-    //     col.b == 0.0f
-    //     ) return;
 
     // 采用原子加，来计算索引位置
     uint globalGemoIndex;
