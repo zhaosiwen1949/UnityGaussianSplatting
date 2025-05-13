@@ -10,6 +10,7 @@
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define TEST_ALPHA 0.001
 #define LN2 0.693147180559945
+#define ALPHA_T 16.0f // 表示高斯投影半径，截止在透明度为 1/16 处
 
 struct GeomData
 {
@@ -63,7 +64,7 @@ bool DuplicateToTilesTouched(
     }
 
     // Threshold: opacity * Gaussian = 1 / 255
-    float t = 2.0f * log(alpha * 16.0f);
+    float t = 2.0f * log(alpha * ALPHA_T);
 
     float x_term = sqrt(-(con_o.y * con_o.y * t) / (disc * con_o.x));
     x_term = (con_o.y < 0) ? x_term : -x_term;
@@ -169,7 +170,8 @@ bool DecomposeCovariance2DRadius(float3 cov2d, float alpha, out float width, out
     if (det == 0.0f) return false;
 
     float det_inv = 1.0f / det;
-    conic2d = float3(cov2d.z * det_inv, -cov2d.y * det_inv, cov2d.x * det_inv);
+    // conic2d = float3(cov2d.z * det_inv, -cov2d.y * det_inv, cov2d.x * det_inv);
+    conic2d = float3(cov2d.z * det_inv, cov2d.y * det_inv, cov2d.x * det_inv);
     // TODO: 通过除以 det，可以添加抗锯齿效果
     
     float trace = a + d;
@@ -183,7 +185,7 @@ bool DecomposeCovariance2DRadius(float3 cov2d, float alpha, out float width, out
 
     // same as in antimatter15/splat
     // const float q = 2.0f;
-    const float q = abs(LN2 * log2(16 * alpha));
+    const float q = abs(LN2 * log2(alpha * ALPHA_T));
     // float r = length(float2((a - d) / 2.0, b));
     // float lambda1 = mean + r;
     // float lambda2 = max(mean - r, 0.1);

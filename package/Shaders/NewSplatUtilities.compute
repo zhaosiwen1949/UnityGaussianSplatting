@@ -404,7 +404,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
             float2 pix_min = { x * _TileConfig.x, y * _TileConfig.y };
             float2 pix_max = { pix_min.x + _TileConfig.x - 1, pix_min.y + _TileConfig.y - 1 };
             if (BlockContainsCenter(pix_min, pix_max, mean2d) ||
-                BlockIntersectEllipse(pix_min, pix_max, mean2d, float4(conic2d.x, conic2d.y, conic2d.z, LN2 * log2(16 * col.a))))
+                BlockIntersectEllipse(pix_min, pix_max, mean2d, float4(conic2d.x, conic2d.y, conic2d.z, LN2 * log2(col.a * ALPHA_T))))
             {
                 uint globalBinPointIndex;
                 InterlockedAdd(_NumArgs[1], 1, globalBinPointIndex);
