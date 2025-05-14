@@ -43,7 +43,10 @@ inline float2 ComputeEllipseIntersection(
 
 bool DuplicateToTilesTouched(
     const float2 p, const float3 cov2d, const float alpha, const float4 tile_config,
-    out float3 con_o, out int2 rect_min, out int2 rect_max)
+    out float3 con_o,
+    out float2 bbox_argmin, out float2 bbox_argmax,
+    out float2 bbox_min, out float2 bbox_max,
+    out int2 rect_min, out int2 rect_max)
 {
     //  ---- SNUGBOX Code ---- //
     float a = cov2d.x;
@@ -71,14 +74,14 @@ bool DuplicateToTilesTouched(
     float y_term = sqrt(-(con_o.y * con_o.y * t) / (disc * con_o.z));
     y_term = (con_o.y < 0) ? y_term : -y_term;
 
-    float2 bbox_argmin = float2( p.y - y_term, p.x - x_term );
-    float2 bbox_argmax = float2( p.y + y_term, p.x + x_term );
+    bbox_argmin = float2( p.y - y_term, p.x - x_term );
+    bbox_argmax = float2( p.y + y_term, p.x + x_term );
     
-    float2 bbox_min = float2(
+    bbox_min = float2(
         ComputeEllipseIntersection(con_o, disc, t, p, true, bbox_argmin.x).x,
         ComputeEllipseIntersection(con_o, disc, t, p, false, bbox_argmin.y).x
     );
-    float2 bbox_max = float2(
+    bbox_max = float2(
         ComputeEllipseIntersection(con_o, disc, t, p, true, bbox_argmax.x).y,
         ComputeEllipseIntersection(con_o, disc, t, p, false, bbox_argmax.y).y
     );
