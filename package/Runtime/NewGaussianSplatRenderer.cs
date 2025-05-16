@@ -55,14 +55,6 @@ namespace GaussianSplatting.Runtime
     public class NewGaussianSplatRenderer : MonoBehaviour
     {
         static int MAX_DISPATCH_GROUP = 65535; 
-        public enum RenderMode
-        {
-            Splats,
-            DebugPoints,
-            DebugPointIndices,
-            DebugBoxes,
-            DebugChunkBounds,
-        }
         public GaussianSplatAsset m_Asset;
 
         [Tooltip("Rendering order compared to other splats. Within same order splats are sorted by distance. Higher order splats render 'on top of' lower order splats.")]
@@ -80,18 +72,11 @@ namespace GaussianSplatting.Runtime
         public int m_SortNthFrame = 1;
 
         [Range(1, 10)] public int m_TileScale = 2;
-
-        public RenderMode m_RenderMode = RenderMode.Splats;
-        [Range(1.0f,15.0f)] public float m_PointDisplaySize = 3.0f;
+        
 
         public GaussianCutout[] m_Cutouts;
 
-        public Shader m_ShaderNewRenderViewData;
-        public Shader m_ShaderSplats;
-        public Shader m_ShaderComposite;
-        public Shader m_ShaderDebugPoints;
-        public Shader m_ShaderDebugBoxes;
-        [Tooltip("Gaussian splatting compute shader")]
+       [Tooltip("Gaussian splatting compute shader")]
         public ComputeShader m_CSSplatUtilities;
 
         int m_SplatCount; // initially same as asset splat count, but editing can change this
@@ -121,31 +106,23 @@ namespace GaussianSplatting.Runtime
         // ImageState
         internal GraphicsBuffer m_ImageState_left_ranges;
         internal GraphicsBuffer m_ImageState_right_ranges;
-
-        GpuSorting m_Sorter;
-        GpuSorting.Args m_SorterArgs;
         
+        // Radix Sorter
         private NewDeviceRadixSort m_RadixSorter;
         private GraphicsBuffer m_AltKey;
         private GraphicsBuffer m_AltPayload;
         private GraphicsBuffer m_GlobalHist;
         private GraphicsBuffer m_PassHist;
-
-        internal Material m_MatNewRenderViewData;
-        internal Material m_MatSplats;
-        internal Material m_MatComposite;
-        internal Material m_MatDebugPoints;
-        internal Material m_MatDebugBoxes;
-
-        internal int m_FrameCounter;
+        
+        // Shader Keyword
+        private LocalKeyword m_SinglePassKeyWord;
+        
         GaussianSplatAsset m_PrevAsset;
         Hash128 m_PrevHash;
         bool m_Registered;
 
         private int m_PreTileX, m_PreTileY;
-
-        static readonly ProfilerMarker s_ProfSort = new(ProfilerCategory.Render, "GaussianSplat.Sort", MarkerFlags.SampleGPU);
-
+        
         internal static class Props
         {
             public static readonly int SplatPos = Shader.PropertyToID("_SplatPos");
@@ -196,6 +173,10 @@ namespace GaussianSplatting.Runtime
             public static readonly int MatrixPreVP = Shader.PropertyToID("_MatrixPreVP");
             public static readonly int MatrixObjectToWorld = Shader.PropertyToID("_MatrixObjectToWorld");
             public static readonly int MatrixWorldToObject = Shader.PropertyToID("_MatrixWorldToObject");
+            public static readonly int MatrixLV = Shader.PropertyToID("_MatrixLV");
+            public static readonly int MatrixRV = Shader.PropertyToID("_MatrixRV");
+            public static readonly int MatrixLP = Shader.PropertyToID("_MatrixLP");
+            public static readonly int MatrixRP = Shader.PropertyToID("_MatrixRP");
             public static readonly int VecScreenParams = Shader.PropertyToID("_VecScreenParams");
             public static readonly int VecWorldSpaceCameraPos = Shader.PropertyToID("_VecWorldSpaceCameraPos");
             public static readonly int CameraTargetTexture = Shader.PropertyToID("_CameraTargetTexture");
@@ -210,7 +191,6 @@ namespace GaussianSplatting.Runtime
         }
 
         public GaussianSplatAsset asset => m_Asset;
-        public int splatCount => m_SplatCount;
 
         enum KernelIndices
         {
@@ -232,12 +212,17 @@ namespace GaussianSplatting.Runtime
             m_Asset.colorData != null;
         public bool HasValidRenderSetup => m_GpuPosData != null && m_GpuOtherData != null && m_GpuChunks != null;
 
-        const int kGpuViewDataSize = 40;
+        private bool m_IsSinglePass =>
+            XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced;
+        
 
         void CreateResourcesForAsset()
         {
-            if (!HasValidAsset)
+            if (!HasValidAsset || !resourcesAreSetUp)
                 return;
+            
+            // 初始化 ShaderKeywords
+            m_SinglePassKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS");
 
             m_SplatCount = asset.splatCount;
             m_TileRenderCount = 10 * asset.splatCount;
@@ -337,20 +322,7 @@ namespace GaussianSplatting.Runtime
                 ref m_PassHist);
         }
 
-        bool resourcesAreSetUp => m_ShaderNewRenderViewData != null && m_ShaderSplats != null && m_ShaderComposite != null && m_ShaderDebugPoints != null &&
-                                  m_ShaderDebugBoxes != null && m_CSSplatUtilities != null && SystemInfo.supportsComputeShaders;
-
-        public void EnsureMaterials()
-        {
-            if (m_MatSplats == null && resourcesAreSetUp)
-            {
-                m_MatNewRenderViewData = new Material(m_ShaderNewRenderViewData) { name = "GaussianNewRenderViewData" };
-                m_MatSplats = new Material(m_ShaderSplats) {name = "GaussianSplats"};
-                m_MatComposite = new Material(m_ShaderComposite) {name = "GaussianClearDstAlpha"};
-                m_MatDebugPoints = new Material(m_ShaderDebugPoints) {name = "GaussianDebugPoints"};
-                m_MatDebugBoxes = new Material(m_ShaderDebugBoxes) {name = "GaussianDebugBoxes"};
-            }
-        }
+        bool resourcesAreSetUp => m_CSSplatUtilities != null && SystemInfo.supportsComputeShaders;
 
         public void EnsureRegister()
         {
@@ -363,11 +335,9 @@ namespace GaussianSplatting.Runtime
 
         public void OnEnable()
         {
-            m_FrameCounter = 0;
             if (!resourcesAreSetUp)
                 return;
-
-            EnsureMaterials();
+            
             EnsureRegister();
 
             CreateResourcesForAsset();
@@ -434,11 +404,18 @@ namespace GaussianSplatting.Runtime
             DisposeResourcesForAsset();
             NewGaussianSplatRenderSystem.instance.UnregisterSplat(this);
             m_Registered = false;
+        }
 
-            DestroyImmediate(m_MatSplats);
-            DestroyImmediate(m_MatComposite);
-            DestroyImmediate(m_MatDebugPoints);
-            DestroyImmediate(m_MatDebugBoxes);
+        internal void SetShaderKeywords(CommandBuffer cmb)
+        {
+            if (m_IsSinglePass)
+            {
+                cmb.EnableKeyword(m_CSSplatUtilities, m_SinglePassKeyWord);
+            }
+            else
+            {
+                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassKeyWord);
+            }
         }
         
         void GetTileConfig(ComputeShader cs, Camera cam, out int tileX, out int tileY, out int blockX, out int blockY)
@@ -505,7 +482,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
 
             // 设定 tile 屏幕分块信息
-            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
+             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
                 new Vector4(block_x, block_y, tile_x, tile_y));
             
@@ -532,28 +509,21 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatOpacityScale, m_OpacityScale);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOrder, m_SHOrder);
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOnly, m_SHOnly ? 1 : 0);
-            // if (XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced)
-            // if (IsSinglePass)
-            // {
-            //     Matrix4x4 matLView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
-            //     Matrix4x4 matRView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
-            //     Matrix4x4 matLProj =
-            //         GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), false);
-            //     Matrix4x4 matRProj =
-            //         GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), false);
-            //     Vector4 cameraLPos = matLView.GetPosition();
-            //     Vector4 cameraRPos = matRView.GetPosition();
-            //
-            //     cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matLView);
-            //     cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matRView);
-            //     cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matLProj);
-            //     cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matRProj);
-            //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SinglePassMode, 1);
-            // }
-            // else
-            // {
-            //     cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SinglePassMode, 0);
-            // }
+            
+            if (m_IsSinglePass)
+            {
+                Matrix4x4 matLView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
+                Matrix4x4 matRView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+                Matrix4x4 matLProj =
+                    GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                Matrix4x4 matRProj =
+                    GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), true);
+            
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matLView);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matRView);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matLProj);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matRProj);
+            }
 
             // int splatCountScale = Application.isPlaying ? 2 : 1;
             // int splatCountScale = IsSinglePass ? 2 : 1;

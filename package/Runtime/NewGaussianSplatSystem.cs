@@ -119,6 +119,9 @@ namespace GaussianSplatting.Runtime
             var kvp = m_ActiveSplats[0];
             var gs = kvp.Item1;
             
+            // SetShaderKeywords
+            gs.SetShaderKeywords(cmb);
+            
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
             gs.PreProcessViewData(cmb, cam, preDepthTexture, preViewProjectionMatrix);

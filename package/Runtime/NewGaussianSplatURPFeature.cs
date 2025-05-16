@@ -13,6 +13,7 @@ using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.RenderGraphModule;
+using UnityEngine.XR;
 
 namespace GaussianSplatting.Runtime
 {
@@ -58,6 +59,7 @@ namespace GaussianSplatting.Runtime
                 RenderTextureDescriptor rtDesc = cameraData.cameraTargetDescriptor;
                 rtDesc.depthBufferBits = 0;
                 rtDesc.msaaSamples = 1;
+                rtDesc.autoGenerateMips = false;
                 rtDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
                 rtDesc.enableRandomWrite = true;
                 var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, true);
@@ -68,8 +70,10 @@ namespace GaussianSplatting.Runtime
                     RenderTextureDescriptor depthDesc = cameraData.cameraTargetDescriptor;
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
+                    depthDesc.autoGenerateMips = false;
                     depthDesc.graphicsFormat = GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
+                    depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_preDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: PreGaussianSplatDepthName );
                 }
                 
@@ -78,8 +82,10 @@ namespace GaussianSplatting.Runtime
                     RenderTextureDescriptor depthDesc = cameraData.cameraTargetDescriptor;
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
+                    depthDesc.autoGenerateMips = false;
                     depthDesc.graphicsFormat = GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
+                    depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_currentDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: CurrentGaussianSplatDepthName );
                 }
                 
@@ -100,9 +106,22 @@ namespace GaussianSplatting.Runtime
                 
                 // 更新 m_preViewProjectionMatrix
                 Camera camera = cameraData.camera;
-                Matrix4x4 currentViewMatrix = camera.worldToCameraMatrix;
-                Matrix4x4 currentGLProjectionMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true);
-                m_preViewProjectionMatrix = currentGLProjectionMatrix * currentViewMatrix;
+                if (XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced)
+                {
+                    Matrix4x4 matLView = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
+                    Matrix4x4 matRView = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+                    Matrix4x4 matLProj =
+                        GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                    Matrix4x4 matRProj =
+                        GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), true);
+                    m_preViewProjectionMatrix = matLProj * matLView;
+                }
+                else
+                {
+                    Matrix4x4 currentViewMatrix = camera.worldToCameraMatrix;
+                    Matrix4x4 currentGLProjectionMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true);
+                    m_preViewProjectionMatrix = currentGLProjectionMatrix * currentViewMatrix;
+                }
 
                 builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
                 builder.UseTexture(resourceData.activeDepthTexture);

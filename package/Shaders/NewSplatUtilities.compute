@@ -15,6 +15,8 @@
 // #pragma multi_compile __ PAYLOAD_UINT PAYLOAD_INT PAYLOAD_FLOAT
 #pragma multi_compile __ SHOULD_ASCEND
 // #pragma multi_compile __ SORT_PAIRS
+#pragma multi_compile __ SINGLE_PASS
+// #define SINGLE_PASS
 
 // GPU sorting needs wave ops
 #pragma require int64
@@ -43,6 +45,13 @@ float4x4 _MatrixPreVP;
 float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
+
+#if defined(SINGLE_PASS)
+float4x4 _MatrixLV;
+float4x4 _MatrixRV;
+float4x4 _MatrixLP;
+float4x4 _MatrixRP;
+#endif
 
 RWStructuredBuffer<uint> _NumArgs;
 RWStructuredBuffer<GeomData> _GeomData;
@@ -186,13 +195,23 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     if (idx >= _SplatCount)
         return;
     _GeomData[idx] = (GeomData)0;
+
+    float4x4 v_matrix, p_matrix, vp_matrix;
+    #if defined(SINGLE_PASS)
+    v_matrix = _MatrixLV;
+    p_matrix = _MatrixLP;
+    vp_matrix = mul(p_matrix, v_matrix);
+    #else
+    v_matrix = UNITY_MATRIX_V;
+    p_matrix = UNITY_MATRIX_P;
+    vp_matrix = UNITY_MATRIX_VP;
+    #endif
         
     float3 position = LoadSplatPosValue(idx);
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
-    float4 centerClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
+    float4 centerClipPos = mul(vp_matrix, float4(centerWorldPos, 1));
     // float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
     float4 preCenterClipPos = mul(_MatrixPreVP, float4(centerWorldPos, 1));
-    // float4 preCenterClipPos = mul(UNITY_MATRIX_VP, float4(centerWorldPos, 1));
     float2 preCenterNDCPos = preCenterClipPos.xy / preCenterClipPos.w;
     float2 preMean2d = ((preCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     preMean2d.x = clamp(preMean2d.x, 0.0f, _VecScreenParams.x);
@@ -241,7 +260,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 cov2d;
     float3 conic2d;
     float4x4 vm = mul(UNITY_MATRIX_V, _MatrixObjectToWorld);
-    cov2d = CalcCovariance2D(position, cov3d0, cov3d1, vm, UNITY_MATRIX_P, _VecScreenParams);
+    cov2d = CalcCovariance2D(position, cov3d0, cov3d1, vm, p_matrix, _VecScreenParams);
 
     // 计算 SnugBox 的覆盖范围
     float2 bbox_argmin, bbox_argmax, bbox_min, bbox_max;
@@ -478,7 +497,11 @@ void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
     _NumArgs[7] = 1;
 }
 
+#if defined(SINGLE_PASS)
+RWTexture2DArray<float4> _GSRenderTexture;
+#else
 RWTexture2D<float4> _GSRenderTexture;
+#endif
 RWTexture2D<float> _GSDepthTexture;
 
 [numthreads(BLOCK_X, BLOCK_Y, 1)]
@@ -549,9 +572,12 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             T = test_T;
         }
 
-        // _GSRenderTexture[uint2(global_id.x, global_id.y)] = float4(group_id.xy, global_id.xy);
-        
+        #if defined(SINGLE_PASS)
+        _GSRenderTexture[uint3(global_id.x, H - global_id.y, 0)] = float4(GammaToLinearSpace(color), 1.0 - T);
+        #else
         _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(GammaToLinearSpace(color), 1.0 - T);
+        #endif
+
         _GSDepthTexture[uint2(global_id.x, H - global_id.y)] = depth;
     }
 }
