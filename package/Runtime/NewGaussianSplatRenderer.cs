@@ -624,14 +624,9 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSDepthTexture,
                 depthTexture);
             
-            m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
-                out _);
-            int count_x = (((int)(screenPar.x * m_WidthScale) + (int)gsX - 1) / (int)gsX) * m_TileScale;
-
-            int count_y = (((int)(screenPar.y * m_HeightScale) + (int)gsY - 1) / (int)gsY) * m_TileScale;
-
+            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
-                count_x, count_y, 1);
+                tile_x * m_TileScale, tile_y * m_TileScale, 1);
         }
 
         public void Update()
