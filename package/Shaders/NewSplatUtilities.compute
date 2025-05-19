@@ -211,14 +211,15 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerClipPos = mul(vp_matrix, float4(centerWorldPos, 1));
     // float4 centerViewPos = mul(UNITY_MATRIX_V, float4(centerWorldPos, 1));
+
+    // 视锥体剔除
+    if (!InFrustum(centerClipPos, _VecScreenParams.zw)) return;
+    
     float4 preCenterClipPos = mul(_MatrixPreVP, float4(centerWorldPos, 1));
     float2 preCenterNDCPos = preCenterClipPos.xy / preCenterClipPos.w;
     float2 preMean2d = ((preCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     preMean2d.x = clamp(preMean2d.x, 0.0f, _VecScreenParams.x);
     preMean2d.y = clamp(preMean2d.y, 0.0f, _VecScreenParams.y);
-    
-    // 视锥体剔除
-    if (!InFrustum(centerClipPos)) return;
 
     // 深度剔除
     float preDepth = _GSPreDepthTexture.Load(int3(preMean2d.x, _VecScreenParams.y - preMean2d.y, 0));
@@ -254,7 +255,8 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     
     // 计算投影中心
     float2 centerNDCPos = centerClipPos.xy / centerClipPos.w;
-    float2 mean2d = ((centerNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+    // 偏移点云在屏幕坐标系中的位置，整体移动到左下角
+    float2 mean2d = ((centerNDCPos - (1.0f - _VecScreenParams.zw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
 
     // 通过 EWA 方法，投影 3D 高斯到平面上的 2D 高斯
     float3 cov2d;
@@ -507,8 +509,10 @@ RWTexture2D<float> _GSDepthTexture;
 [numthreads(BLOCK_X, BLOCK_Y, 1)]
 void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID)
 {
-    float W = _VecScreenParams.x;
-    float H = _VecScreenParams.y;
+    float W = _VecScreenParams.x * _VecScreenParams.z;
+    float H = _VecScreenParams.y * _VecScreenParams.w;
+    int w_offset = _VecScreenParams.x * (1.0 - _VecScreenParams.z) * 0.5;
+    int h_offset = _VecScreenParams.y * (1.0 - _VecScreenParams.w) * 0.5;
     uint block_x = BLOCK_X * _TileScale;
     uint horizontal_blocks = (uint)((W + block_x - 1) / block_x);
     group_id.xy /= _TileScale;
@@ -537,8 +541,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             int coll_id = _RO_BinLeftPointListValue[range.x + j];
             // 根据像素到 2D 高斯中心点的距离，计算衰减度
             float2 xy = _RO_GeomData[coll_id].mean2D;
-
-
+            
             float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
 
             float4 con_o = _RO_GeomData[coll_id].conic_opacity;
@@ -566,18 +569,18 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
             color += tmp_color * alpha * T;
 
             // 纪录截至时的最大深度
-            depth = f16tof32(_RO_GeomData[coll_id].rgb_depth.y);;
+            depth = f16tof32(_RO_GeomData[coll_id].rgb_depth.y);
             
             // 更新累积 alpha
             T = test_T;
         }
 
         #if defined(SINGLE_PASS)
-        _GSRenderTexture[uint3(global_id.x, H - global_id.y, 0)] = float4(GammaToLinearSpace(color), 1.0 - T);
+        _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(GammaToLinearSpace(color), 1.0 - T);
         #else
-        _GSRenderTexture[uint2(global_id.x, H - global_id.y)] = float4(GammaToLinearSpace(color), 1.0 - T);
+        _GSRenderTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = float4(GammaToLinearSpace(color), 1.0 - T);
         #endif
 
-        _GSDepthTexture[uint2(global_id.x, H - global_id.y)] = depth;
+        _GSDepthTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = depth;
     }
 }

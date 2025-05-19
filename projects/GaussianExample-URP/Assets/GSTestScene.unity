@@ -256,7 +256,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &329123323
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -327,6 +327,8 @@ MonoBehaviour:
   m_SHOnly: 0
   m_SortNthFrame: 1
   m_TileScale: 2
+  m_WidthScale: 0.75
+  m_HeightScale: 0.75
   m_Cutouts: []
   m_CSSplatUtilities: {fileID: 7200000, guid: 2781f2b155707bb488975585e6e35254, type: 3}
 --- !u!4 &592825761
@@ -405,7 +407,7 @@ Camera:
     height: 1
   near clip plane: 0.01
   far clip plane: 1000
-  field of view: 39.096508
+  field of view: 111.2897
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -577,7 +579,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1648302195
 Transform:
   m_ObjectHideFlags: 0
@@ -676,9 +678,9 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
+  near clip plane: 0.01
   far clip plane: 1000
-  field of view: 60
+  field of view: 111.2897
   orthographic: 0
   orthographic size: 5
   m_Depth: 0

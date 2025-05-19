@@ -72,6 +72,8 @@ namespace GaussianSplatting.Runtime
         public int m_SortNthFrame = 1;
 
         [Range(1, 10)] public int m_TileScale = 2;
+        [Range(0.5f, 1.0f)] public float m_WidthScale = 0.75f;
+        [Range(0.5f, 1.0f)] public float m_HeightScale = 0.75f;
         
 
         public GaussianCutout[] m_Cutouts;
@@ -434,8 +436,8 @@ namespace GaussianSplatting.Runtime
                 out _);
             blockX = (int)gsX * m_TileScale;
             blockY = (int)gsY * m_TileScale;
-            tileX = (screen_width + blockX - 1) / blockX;
-            tileY = (screen_height + blockY - 1) / blockY;
+            tileX = (int)((screen_width * m_WidthScale + blockX - 1) / blockX);
+            tileY = (int)(screen_height * m_HeightScale + blockY - 1) / blockY;
         }
 
         void GetDispatchGroupNum(int count, int groupDim, out int countX, out int countY)
@@ -465,7 +467,7 @@ namespace GaussianSplatting.Runtime
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
             int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
             int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
+            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
             Vector4 camPos = cam.transform.position;
 
             // calculate view dependent data for each splat
@@ -482,7 +484,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
 
             // 设定 tile 屏幕分块信息
-             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
+            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
                 new Vector4(block_x, block_y, tile_x, tile_y));
             
@@ -514,10 +516,12 @@ namespace GaussianSplatting.Runtime
             {
                 Matrix4x4 matLView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
                 Matrix4x4 matRView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+                cam.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Left);
                 Matrix4x4 matLProj =
-                    GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                    GL.GetGPUProjectionMatrix(cam.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                cam.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Right);
                 Matrix4x4 matRProj =
-                    GL.GetGPUProjectionMatrix(cam.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), true);
+                    GL.GetGPUProjectionMatrix(cam.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Right), true);
             
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matLView);
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matRView);
@@ -592,7 +596,7 @@ namespace GaussianSplatting.Runtime
             // 设置屏幕像素大小
             int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
             int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, 0, 0);
+            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
@@ -622,9 +626,9 @@ namespace GaussianSplatting.Runtime
             
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
                 out _);
-            int count_x = (((int)screenPar.x + (int)gsX - 1) / (int)gsX) * m_TileScale;
+            int count_x = (((int)(screenPar.x * m_WidthScale) + (int)gsX - 1) / (int)gsX) * m_TileScale;
 
-            int count_y = (((int)screenPar.y + (int)gsY - 1) / (int)gsY) * m_TileScale;
+            int count_y = (((int)(screenPar.y * m_HeightScale) + (int)gsY - 1) / (int)gsY) * m_TileScale;
 
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 count_x, count_y, 1);
