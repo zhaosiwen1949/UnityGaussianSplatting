@@ -37,6 +37,8 @@ namespace GaussianSplatting.Runtime
             private RTHandle m_preDepthTexture;
             private RTHandle m_currentDepthTexture;
             private Matrix4x4 m_preViewProjectionMatrix = Matrix4x4.identity;
+            private Matrix4x4 m_preLeftViewProjectionMatrix = Matrix4x4.identity;
+            private Matrix4x4 m_preRightViewProjectionMatrix = Matrix4x4.identity;
             
             class PassData
             {
@@ -46,7 +48,8 @@ namespace GaussianSplatting.Runtime
                 internal TextureHandle GaussianSplatRT;
                 internal TextureHandle PreGaussianSplatDepth;
                 internal TextureHandle CurrentGaussianSplatDepth;
-                internal Matrix4x4 PreViewProjectionMatrix;
+                internal Matrix4x4 PreLeftViewProjectionMatrix;
+                internal Matrix4x4 PreRightViewProjectionMatrix;
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -71,7 +74,7 @@ namespace GaussianSplatting.Runtime
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = GraphicsFormat.R16_SFloat;
+                    depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
                     depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_preDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: PreGaussianSplatDepthName );
@@ -83,7 +86,7 @@ namespace GaussianSplatting.Runtime
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = GraphicsFormat.R16_SFloat;
+                    depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
                     depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_currentDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: CurrentGaussianSplatDepthName );
@@ -102,7 +105,16 @@ namespace GaussianSplatting.Runtime
                 passData.GaussianSplatRT = textureHandle;
                 passData.PreGaussianSplatDepth = preDepthTextureHandle;
                 passData.CurrentGaussianSplatDepth = currentDepthTextureHandle;
-                passData.PreViewProjectionMatrix = m_preViewProjectionMatrix;
+                if (XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced)
+                {
+                    passData.PreLeftViewProjectionMatrix = m_preLeftViewProjectionMatrix;
+                    passData.PreRightViewProjectionMatrix = m_preRightViewProjectionMatrix;
+                }
+                else
+                {
+                    passData.PreLeftViewProjectionMatrix = m_preViewProjectionMatrix;
+                    passData.PreRightViewProjectionMatrix = Matrix4x4.identity;
+                }
                 
                 // 更新 m_preViewProjectionMatrix
                 Camera camera = cameraData.camera;
@@ -110,11 +122,14 @@ namespace GaussianSplatting.Runtime
                 {
                     Matrix4x4 matLView = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
                     Matrix4x4 matRView = camera.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+                    camera.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Left);
                     Matrix4x4 matLProj =
-                        GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                        GL.GetGPUProjectionMatrix(camera.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                    camera.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Right);
                     Matrix4x4 matRProj =
-                        GL.GetGPUProjectionMatrix(camera.GetStereoProjectionMatrix(Camera.StereoscopicEye.Right), true);
-                    m_preViewProjectionMatrix = matLProj * matLView;
+                        GL.GetGPUProjectionMatrix(camera.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Right), true);
+                    m_preLeftViewProjectionMatrix = matLProj * matLView;
+                    m_preRightViewProjectionMatrix = matRProj * matRView;
                 }
                 else
                 {
@@ -142,7 +157,8 @@ namespace GaussianSplatting.Runtime
                         data.GaussianSplatRT,
                         data.PreGaussianSplatDepth,
                         data.CurrentGaussianSplatDepth,
-                        data.PreViewProjectionMatrix
+                        data.PreLeftViewProjectionMatrix,
+                        data.PreRightViewProjectionMatrix
                     );
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture);

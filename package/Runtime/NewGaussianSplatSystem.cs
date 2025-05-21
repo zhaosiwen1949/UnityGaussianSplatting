@@ -111,7 +111,8 @@ namespace GaussianSplatting.Runtime
             TextureHandle gsRenderTexture,
             TextureHandle preDepthTexture,
             TextureHandle currentDepthTexture,
-            Matrix4x4 preViewProjectionMatrix
+            Matrix4x4 preLeftViewProjectionMatrix,
+            Matrix4x4 preRightViewProjectionMatrix
         )
         {
             if (m_ActiveSplats.Count <= 0) return;
@@ -124,7 +125,7 @@ namespace GaussianSplatting.Runtime
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
-            gs.PreProcessViewData(cmb, cam, preDepthTexture, preViewProjectionMatrix);
+            gs.PreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
             cmb.EndSample(s_ProfPreProcess);
                 
             // RadixSort

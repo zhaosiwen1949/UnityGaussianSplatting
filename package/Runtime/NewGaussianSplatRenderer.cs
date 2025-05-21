@@ -94,10 +94,12 @@ namespace GaussianSplatting.Runtime
         
         // new tile-renderer needed buffer
         // VisibleCounts
-        internal GraphicsBuffer m_NumArgs;
+        internal GraphicsBuffer m_NumArgs_left;
+        internal GraphicsBuffer m_NumArgs_right;
         
         // GeometryState
-        internal GraphicsBuffer m_GeomState_data;
+        internal GraphicsBuffer m_GeomState_left_data;
+        internal GraphicsBuffer m_GeomState_right_data;
 
         // BinningState
         internal GraphicsBuffer m_BinState_left_point_list_keys;
@@ -110,11 +112,17 @@ namespace GaussianSplatting.Runtime
         internal GraphicsBuffer m_ImageState_right_ranges;
         
         // Radix Sorter
-        private NewDeviceRadixSort m_RadixSorter;
-        private GraphicsBuffer m_AltKey;
-        private GraphicsBuffer m_AltPayload;
-        private GraphicsBuffer m_GlobalHist;
-        private GraphicsBuffer m_PassHist;
+        private NewDeviceRadixSort m_RadixSorter_left;
+        private GraphicsBuffer m_AltKey_left;
+        private GraphicsBuffer m_AltPayload_left;
+        private GraphicsBuffer m_GlobalHist_left;
+        private GraphicsBuffer m_PassHist_left;
+        
+        private NewDeviceRadixSort m_RadixSorter_right;
+        private GraphicsBuffer m_AltKey_right;
+        private GraphicsBuffer m_AltPayload_right;
+        private GraphicsBuffer m_GlobalHist_right;
+        private GraphicsBuffer m_PassHist_right;
         
         // Shader Keyword
         private LocalKeyword m_SinglePassKeyWord;
@@ -144,13 +152,21 @@ namespace GaussianSplatting.Runtime
             public static readonly int SHOrder = Shader.PropertyToID("_SHOrder");
             public static readonly int SHOnly = Shader.PropertyToID("_SHOnly");
             
-            public static readonly int NumArgs = Shader.PropertyToID("_NumArgs");
-            public static readonly int GeomData = Shader.PropertyToID("_GeomData");
-            public static readonly int BinPointListKey = Shader.PropertyToID("_BinPointListKey");
-            public static readonly int BinPointListValue = Shader.PropertyToID("_BinPointListValue");
+            public static readonly int LeftNumArgs = Shader.PropertyToID("_LeftNumArgs");
+            public static readonly int RightNumArgs = Shader.PropertyToID("_RightNumArgs");
+            public static readonly int GeomLeftData = Shader.PropertyToID("_GeomLeftData");
+            public static readonly int GeomRightData = Shader.PropertyToID("_GeomRightData");
+            public static readonly int BinLeftPointListKey = Shader.PropertyToID("_BinLeftPointListKey");
+            public static readonly int BinLeftPointListValue = Shader.PropertyToID("_BinLeftPointListValue");
+            public static readonly int BinRightPointListKey = Shader.PropertyToID("_BinRightPointListKey");
+            public static readonly int BinRightPointListValue = Shader.PropertyToID("_BinRightPointListValue");
+            public static readonly int ImageLeftRange = Shader.PropertyToID("_ImageLeftRange");
+            public static readonly int ImageRightRange = Shader.PropertyToID("_ImageRightRange");
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
             
-            public static readonly int RO_GeomData = Shader.PropertyToID("_RO_GeomData");
+            public static readonly int RO_NumArgs = Shader.PropertyToID("_RO_NumArgs");
+            public static readonly int RO_GeomLeftData = Shader.PropertyToID("_RO_GeomLeftData");
+            public static readonly int RO_GeomRightData = Shader.PropertyToID("_RO_GeomRightData");
             public static readonly int RO_BinPointListKey = Shader.PropertyToID("_RO_BinPointListKey");
             public static readonly int RO_ImageLeftRange = Shader.PropertyToID("_RO_ImageLeftRange");
             public static readonly int RO_ImageRightRange = Shader.PropertyToID("_RO_ImageRightRange");
@@ -172,7 +188,8 @@ namespace GaussianSplatting.Runtime
             public static readonly int DstBuffer = Shader.PropertyToID("_DstBuffer");
             public static readonly int BufferSize = Shader.PropertyToID("_BufferSize");
             public static readonly int MatrixMV = Shader.PropertyToID("_MatrixMV");
-            public static readonly int MatrixPreVP = Shader.PropertyToID("_MatrixPreVP");
+            public static readonly int MatrixPreLeftVP = Shader.PropertyToID("_MatrixPreLeftVP");
+            public static readonly int MatrixPreRightVP = Shader.PropertyToID("_MatrixPreRightVP");
             public static readonly int MatrixObjectToWorld = Shader.PropertyToID("_MatrixObjectToWorld");
             public static readonly int MatrixWorldToObject = Shader.PropertyToID("_MatrixWorldToObject");
             public static readonly int MatrixLV = Shader.PropertyToID("_MatrixLV");
@@ -216,7 +233,6 @@ namespace GaussianSplatting.Runtime
 
         private bool m_IsSinglePass =>
             XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced;
-        
 
         void CreateResourcesForAsset()
         {
@@ -257,25 +273,28 @@ namespace GaussianSplatting.Runtime
             }
             
             // 初始化 NumArgs
-            m_NumArgs = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgs"};
+            m_NumArgs_left = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgsLeft"};
+            m_NumArgs_right = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgsRight"};
             // uint[] zero = new uint[8];
             // m_NumArgs.SetData(zero);
             
             // 初始化 GeometryState
-            int splatCountScale = 1;
-            m_GeomState_data =
-                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount * splatCountScale, 8 * 4)
-                    { name = "GeomStateData" };
+            m_GeomState_left_data =
+                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 8 * 4)
+                    { name = "GeomStateLeftData" };
+            m_GeomState_right_data =
+                new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_SplatCount, 8 * 4)
+                    { name = "GeomStateRightData" };
             
             // BinState 中深度排序的部分，和点云点数保持相同
             m_BinState_left_point_list_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 8)
                 { name = "BinStateLeftKeyData" };
             m_BinState_left_point_list_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
                 { name = "BinStateLeftValueData" };
-            // m_BinState_right_point_list_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 8)
-            //     { name = "BinStateRightKeyData" };
-            // m_BinState_right_point_list_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
-            //     { name = "BinStateRightValueData" };
+            m_BinState_right_point_list_keys = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 8)
+                { name = "BinStateRightKeyData" };
+            m_BinState_right_point_list_values = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_TileRenderCount, 4)
+                { name = "BinStateRightValueData" };
             
             InitRadixSortBuffers(m_TileRenderCount);
 
@@ -299,8 +318,11 @@ namespace GaussianSplatting.Runtime
                 // 把 m_ImageState_left_ranges 置为 0
                 {
                     int tile_count = tile_x * tile_y;
-                    m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.NumArgs, m_NumArgs);
-                    m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.ImageRange, m_ImageState_left_ranges);
+                    m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.ImageLeftRange, m_ImageState_left_ranges);
+                    if (m_IsSinglePass)
+                    {
+                        m_CSSplatUtilities.SetBuffer((int)KernelIndices.InitImageRanges, Props.ImageRightRange, m_ImageState_right_ranges);
+                    }
                     m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.InitImageRanges, out uint gsX,
                         out _, out _);
                     GetDispatchGroupNum(tile_count, (int)gsX, out int countX, out int countY);
@@ -315,13 +337,21 @@ namespace GaussianSplatting.Runtime
         
         void InitRadixSortBuffers(int tileRenderCount)
         {
-            m_RadixSorter = new NewDeviceRadixSort(
+            m_RadixSorter_left = new NewDeviceRadixSort(
                 m_CSSplatUtilities,
                 tileRenderCount,
-                ref m_AltKey,
-                ref m_AltPayload,
-                ref m_GlobalHist,
-                ref m_PassHist);
+                ref m_AltKey_left,
+                ref m_AltPayload_left,
+                ref m_GlobalHist_left,
+                ref m_PassHist_left);
+            
+            m_RadixSorter_right = new NewDeviceRadixSort(
+                m_CSSplatUtilities,
+                tileRenderCount,
+                ref m_AltKey_right,
+                ref m_AltPayload_right,
+                ref m_GlobalHist_right,
+                ref m_PassHist_right);
         }
 
         bool resourcesAreSetUp => m_CSSplatUtilities != null && SystemInfo.supportsComputeShaders;
@@ -381,13 +411,19 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuSHData);
             DisposeBuffer(ref m_GpuChunks);
             
-            DisposeBuffer(ref m_AltKey);
-            DisposeBuffer(ref m_AltPayload);
-            DisposeBuffer(ref m_GlobalHist);
-            DisposeBuffer(ref m_PassHist);
+            DisposeBuffer(ref m_AltKey_left);
+            DisposeBuffer(ref m_AltPayload_left);
+            DisposeBuffer(ref m_GlobalHist_left);
+            DisposeBuffer(ref m_PassHist_left);
+            DisposeBuffer(ref m_AltKey_right);
+            DisposeBuffer(ref m_AltPayload_right);
+            DisposeBuffer(ref m_GlobalHist_right);
+            DisposeBuffer(ref m_PassHist_right);
             
-            DisposeBuffer(ref m_NumArgs);
-            DisposeBuffer(ref m_GeomState_data);
+            DisposeBuffer(ref m_NumArgs_left);
+            DisposeBuffer(ref m_NumArgs_right);
+            DisposeBuffer(ref m_GeomState_left_data);
+            DisposeBuffer(ref m_GeomState_right_data);
             
             DisposeBuffer(ref m_BinState_left_point_list_keys);
             DisposeBuffer(ref m_BinState_left_point_list_values);
@@ -455,7 +491,7 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        internal void PreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preViewProjectionMatrix)
+        internal void PreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preLeftViewProjectionMatrix, Matrix4x4 preRightViewProjectionMatrix)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
@@ -463,6 +499,7 @@ namespace GaussianSplatting.Runtime
             var tr = transform;
 
             Matrix4x4 matView = cam.worldToCameraMatrix;
+            Matrix4x4 matProj = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true);
             Matrix4x4 matO2W = tr.localToWorldMatrix;
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
             int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
@@ -474,14 +511,26 @@ namespace GaussianSplatting.Runtime
             SetAssetDataOnCS(cmb, KernelIndices.PreProcessViewData);
             
             // 初始化 NumArgs
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.NumArgs, m_NumArgs);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.RightNumArgs, m_NumArgs_right);
+            }
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,
                 1, 1, 1);
             // 设置 NumArgs
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.NumArgs, m_NumArgs);
-            
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.RightNumArgs, m_NumArgs_right);
+            }
+
             // 设定 GemoState 的数据
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomData, m_GeomState_data);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomLeftData, m_GeomState_left_data);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomRightData, m_GeomState_right_data);
+            }
 
             // 设定 tile 屏幕分块信息
             GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
@@ -490,16 +539,27 @@ namespace GaussianSplatting.Runtime
             
             // 构造排序的 key【tile | depth】 和 value【coll_id】
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-                Props.BinPointListKey, m_BinState_left_point_list_keys);
+                Props.BinLeftPointListKey, m_BinState_left_point_list_keys);
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
-                Props.BinPointListValue, m_BinState_left_point_list_values);
+                Props.BinLeftPointListValue, m_BinState_left_point_list_values);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                    Props.BinRightPointListKey, m_BinState_right_point_list_keys);
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                    Props.BinRightPointListValue, m_BinState_right_point_list_values);
+            }
             
             // 绑定上一帧的深度图
             cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GSPreDepthTexture,
                 depthTexture);
             
             // 绑定上一帧的 VP 矩阵
-            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreVP, preViewProjectionMatrix);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreLeftVP, preLeftViewProjectionMatrix);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreRightVP, preRightViewProjectionMatrix);
+            }
             
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
@@ -527,11 +587,13 @@ namespace GaussianSplatting.Runtime
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matRView);
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matLProj);
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matRProj);
+                
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matView);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matView);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matProj);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matProj);
             }
-
-            // int splatCountScale = Application.isPlaying ? 2 : 1;
-            // int splatCountScale = IsSinglePass ? 2 : 1;
-            int splatCountScale = 1;
+            
             m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
                 out _);
             
@@ -548,39 +610,65 @@ namespace GaussianSplatting.Runtime
             // 1. 初始化 Sort 参数 buffer
             cmb.SetComputeIntParam(m_CSSplatUtilities, "e_min", 2);
             cmb.SetComputeIntParam(m_CSSplatUtilities, "e_max", m_TileRenderCount);
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.NumArgs, m_NumArgs);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.RightNumArgs, m_NumArgs_right);
+            }
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, 1, 1, 1);
             
             // 2. 对 BinPointList 进行排序
-            m_RadixSorter.Sort(
+            m_RadixSorter_left.Sort(
                 cmb,
-                m_NumArgs,
+                m_NumArgs_left,
                 m_BinState_left_point_list_keys,
                 m_BinState_left_point_list_values,
-                m_AltKey,
-                m_AltPayload,
-                m_GlobalHist,
-                m_PassHist,
+                m_AltKey_left,
+                m_AltPayload_left,
+                m_GlobalHist_left,
+                m_PassHist_left,
                 true
                 );
+
+            if (m_IsSinglePass)
+            {
+                m_RadixSorter_right.Sort(
+                    cmb,
+                    m_NumArgs_right,
+                    m_BinState_right_point_list_keys,
+                    m_BinState_right_point_list_values,
+                    m_AltKey_right,
+                    m_AltPayload_right,
+                    m_GlobalHist_right,
+                    m_PassHist_right,
+                    true
+                );
+            }
             
             // 3. 计算 ImageState 数据
             {
                 EnsureImageState(cam);
                 {
-                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.NumArgs, m_NumArgs);
+                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.RO_NumArgs, m_NumArgs_left);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.RO_BinPointListKey, m_BinState_left_point_list_keys);
                     cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
                         Props.ImageRange, m_ImageState_left_ranges);
-                
-                    // m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.IdentifyTileRanges, out uint gsX,
-                    //     out _, out _);
-                    // GetDispatchGroupNum(m_NumRendered, (int)gsX, out int countX, out int countY);
-                    // cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                    //     countX, countY, 1);
+                    
                     cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
-                        m_NumArgs, 20);
+                        m_NumArgs_left, 20);
+
+                    if (m_IsSinglePass)
+                    {
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.RO_NumArgs, m_NumArgs_right);
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            Props.RO_BinPointListKey, m_BinState_right_point_list_keys);
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            Props.ImageRange, m_ImageState_right_ranges);
+                    
+                        cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            m_NumArgs_right, 20);
+                    }
                 }
             }
         }
@@ -600,23 +688,32 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomData,
-                m_GeomState_data);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomLeftData,
+                m_GeomState_left_data);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomRightData,
+                    m_GeomState_right_data);
+            }
 
             // 设定 BinnState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 Props.RO_BinLeftPointListValue, m_BinState_left_point_list_values);
-            // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
-            //     Props.BinRightPointListTileValue, m_BinState_right_point_list_tile_values);
-            // cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumRendered, m_BinState_left_point_list_tile_values.count);
-            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.NumArgs, m_NumArgs);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_BinRightPointListValue,
+                    m_BinState_right_point_list_values);
+            }
 
 
             // 设定 ImageState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_ImageLeftRange,
                 m_ImageState_left_ranges);
-            // cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.ImageRightRange,
-            //     m_ImageState_right_ranges);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_ImageRightRange,
+                    m_ImageState_right_ranges);
+            }
 
             // 设定输入 texture
             cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSRenderTexture,
@@ -624,7 +721,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSDepthTexture,
                 depthTexture);
             
-            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
+            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
                 tile_x * m_TileScale, tile_y * m_TileScale, 1);
         }
