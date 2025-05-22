@@ -362,10 +362,10 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     InterlockedAdd(_LeftNumArgs[0], 1, globalGemoLeftIndex);
     
     // 记录数据
-    _GeomLeftData[idx].conic_opacity = float4(conic_left_2d.x, conic_left_2d.y, conic_left_2d.z, col.a);
-    _GeomLeftData[idx].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
-    _GeomLeftData[idx].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerLeftClipPos.w);
-    _GeomLeftData[idx].mean2D = mean_left_2d;
+    _GeomLeftData[globalGemoLeftIndex].conic_opacity = float4(conic_left_2d.x, conic_left_2d.y, conic_left_2d.z, col.a);
+    _GeomLeftData[globalGemoLeftIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
+    _GeomLeftData[globalGemoLeftIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerLeftClipPos.w);
+    _GeomLeftData[globalGemoLeftIndex].mean2D = mean_left_2d;
     
     #if defined(SINGLE_PASS)
     // 采用原子加，来计算索引位置
@@ -373,10 +373,10 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     InterlockedAdd(_RightNumArgs[0], 1, globalGemoRightIndex);
     
     // 记录数据
-    _GeomRightData[idx].conic_opacity = float4(conic_right_2d.x, conic_right_2d.y, conic_right_2d.z, col.a);
-    _GeomRightData[idx].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
-    _GeomRightData[idx].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerRightClipPos.w);
-    _GeomRightData[idx].mean2D = mean_right_2d;
+    _GeomRightData[globalGemoRightIndex].conic_opacity = float4(conic_right_2d.x, conic_right_2d.y, conic_right_2d.z, col.a);
+    _GeomRightData[globalGemoRightIndex].rgb_depth.x = f32tof16(col.r) << 16 | f32tof16(col.g);
+    _GeomRightData[globalGemoRightIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerRightClipPos.w);
+    _GeomRightData[globalGemoRightIndex].mean2D = mean_right_2d;
     #endif
     
     // ---- AccuTile Code ---- //
@@ -485,7 +485,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
                 uint64_t tile_key = isY ? (u * (uint)_TileConfig.z + v) : (v * (uint)_TileConfig.z + u);
                 tile_key <<= 32;
                 _BinLeftPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));
-                _BinLeftPointListValue[globalBinPointIndex] = idx;
+                _BinLeftPointListValue[globalBinPointIndex] = globalGemoLeftIndex;
                 globalBinPointIndex++;
             }
             // Max line of this tile slice will be min lin of next tile slice
@@ -601,7 +601,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
                 uint64_t tile_key = isY ? (u * (uint)_TileConfig.z + v) : (v * (uint)_TileConfig.z + u);
                 tile_key <<= 32;
                 _BinRightPointListKey[globalBinPointIndex] = tile_key | ((uint64_t)depth & (((uint64_t)1U << 32) - 1));
-                _BinRightPointListValue[globalBinPointIndex] = idx;
+                _BinRightPointListValue[globalBinPointIndex] = globalGemoRightIndex;
                 globalBinPointIndex++;
             }
             // Max line of this tile slice will be min lin of next tile slice

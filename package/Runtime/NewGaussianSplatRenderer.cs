@@ -243,12 +243,12 @@ namespace GaussianSplatting.Runtime
             m_SinglePassKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS");
 
             m_SplatCount = asset.splatCount;
-            m_TileRenderCount = 10 * asset.splatCount;
+            m_TileRenderCount = asset.splatCount;
             m_GpuPosData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.posData.dataSize / 4), 4) { name = "GaussianPosData" };
             m_GpuPosData.SetData(asset.posData.GetData<uint>());
             m_GpuOtherData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.otherData.dataSize / 4), 4) { name = "GaussianOtherData" };
             m_GpuOtherData.SetData(asset.otherData.GetData<uint>());
-            m_GpuSHData = new GraphicsBuffer(GraphicsBuffer.Target.Raw, (int) (asset.shData.dataSize / 4), 4) { name = "GaussianSHData" };
+            m_GpuSHData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.shData.dataSize / 4), 4) { name = "GaussianSHData" };
             m_GpuSHData.SetData(asset.shData.GetData<uint>());
             var (texWidth, texHeight) = GaussianSplatAsset.CalcTextureSize(asset.splatCount);
             var texFormat = GaussianSplatAsset.ColorFormatToGraphics(asset.colorFormat);
@@ -273,8 +273,8 @@ namespace GaussianSplatting.Runtime
             }
             
             // 初始化 NumArgs
-            m_NumArgs_left = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgsLeft"};
-            m_NumArgs_right = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 8, 4) {name = "NumArgsRight"};
+            m_NumArgs_left = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 8, 4) {name = "NumArgsLeft"};
+            m_NumArgs_right = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 8, 4) {name = "NumArgsRight"};
             // uint[] zero = new uint[8];
             // m_NumArgs.SetData(zero);
             

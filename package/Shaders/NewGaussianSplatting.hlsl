@@ -416,11 +416,11 @@ uint EncodeQuatToNorm10(float4 v) // 32 bits: 10.10.10.2
 }
 
 
-#ifdef SHADER_STAGE_COMPUTE
-#define SplatBufferDataType RWByteAddressBuffer
-#else
+// #ifdef SHADER_STAGE_COMPUTE
+// #define SplatBufferDataType RWByteAddressBuffer
+// #else
 #define SplatBufferDataType ByteAddressBuffer
-#endif
+// #endif
 
 SplatBufferDataType _SplatPos;
 SplatBufferDataType _SplatOther;

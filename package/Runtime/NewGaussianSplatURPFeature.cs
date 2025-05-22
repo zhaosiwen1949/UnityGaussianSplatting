@@ -70,25 +70,23 @@ namespace GaussianSplatting.Runtime
                 // 初始化创建 PreDepthTexture 和 CurrentDepthTexture
                 if (m_preDepthTexture == null)
                 {
-                    RenderTextureDescriptor depthDesc = cameraData.cameraTargetDescriptor;
+                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
                     depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
-                    depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_preDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: PreGaussianSplatDepthName );
                 }
                 
                 if (m_currentDepthTexture == null)
                 {
-                    RenderTextureDescriptor depthDesc = cameraData.cameraTargetDescriptor;
+                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
                     depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
-                    depthDesc.vrUsage = VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_currentDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: CurrentGaussianSplatDepthName );
                 }
                 
