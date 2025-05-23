@@ -332,7 +332,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     int y_right_span = rect_right_max.y - rect_right_min.y;
     int x_right_span = rect_right_max.x - rect_right_min.x;
     
-    if ((y_left_span * x_left_span == 0) || (y_right_span * y_right_span == 0)) return;    
+    if ((y_left_span * x_left_span == 0) && (y_right_span * y_right_span == 0)) return;    
     #else
     // If no tiles are touched, return 0
     if (y_left_span * x_left_span == 0) return;
