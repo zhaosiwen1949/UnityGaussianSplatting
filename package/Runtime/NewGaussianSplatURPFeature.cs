@@ -149,7 +149,7 @@ namespace GaussianSplatting.Runtime
                     using var _ = new ProfilingScope(commandBuffer, s_profilingSampler);
                     
                     // Tile 渲染方法
-                    NewGaussianSplatRenderSystem.instance.TileRenderSplats(
+                    NewGaussianSplatRenderSystem.instance.TileStereoRenderSplats(
                         data.CameraData.camera,
                         commandBuffer,
                         data.GaussianSplatRT,
@@ -159,6 +159,7 @@ namespace GaussianSplatting.Runtime
                         data.PreRightViewProjectionMatrix
                     );
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
+                    commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
                     Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });

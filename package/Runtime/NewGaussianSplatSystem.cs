@@ -105,7 +105,7 @@ namespace GaussianSplatting.Runtime
             return true;
         }
 
-        public void TileRenderSplats(
+        public void TileStereoRenderSplats(
             Camera cam,
             CommandBuffer cmb,
             TextureHandle gsRenderTexture,
@@ -125,17 +125,51 @@ namespace GaussianSplatting.Runtime
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
-            gs.PreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
+            gs.StereoPreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
             cmb.EndSample(s_ProfPreProcess);
                 
             // RadixSort
             cmb.BeginSample(s_ProfRadixSort);
-            gs.RadixSortPoints(cmb, cam);
+            gs.StereoRadixSortPoints(cmb, cam);
             cmb.EndSample(s_ProfRadixSort);
             
             // TileRender
             cmb.BeginSample(s_ProfDraw);
-            gs.RenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
+            gs.StereoRenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
+            cmb.EndSample(s_ProfDraw);
+        }
+        
+        public void TileSingleRenderSplats(
+            Camera cam,
+            CommandBuffer cmb,
+            TextureHandle gsRenderTexture,
+            TextureHandle preDepthTexture,
+            TextureHandle currentDepthTexture,
+            Matrix4x4 preLeftViewProjectionMatrix,
+            Matrix4x4 preRightViewProjectionMatrix
+        )
+        {
+            if (m_ActiveSplats.Count <= 0) return;
+            
+            var kvp = m_ActiveSplats[0];
+            var gs = kvp.Item1;
+            
+            // SetShaderKeywords
+            gs.SetShaderKeywords(cmb);
+            
+            // PreProcess
+            cmb.BeginSample(s_ProfPreProcess);
+            gs.SinglePreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
+            cmb.EndSample(s_ProfPreProcess);
+                
+            // RadixSort
+            cmb.BeginSample(s_ProfRadixSort);
+            gs.SingleRadixSortPoints(cmb, cam);
+            cmb.EndSample(s_ProfRadixSort);
+            
+            // TileRender
+            cmb.BeginSample(s_ProfDraw);
+            gs.SingleRenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
             cmb.EndSample(s_ProfDraw);
         }
     }

@@ -491,7 +491,7 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        internal void PreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preLeftViewProjectionMatrix, Matrix4x4 preRightViewProjectionMatrix)
+        internal void StereoPreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preLeftViewProjectionMatrix, Matrix4x4 preRightViewProjectionMatrix)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
@@ -602,7 +602,7 @@ namespace GaussianSplatting.Runtime
                 countX, countY, 1);
         }
 
-        internal void RadixSortPoints(CommandBuffer cmb, Camera cam)
+        internal void StereoRadixSortPoints(CommandBuffer cmb, Camera cam)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
@@ -673,7 +673,242 @@ namespace GaussianSplatting.Runtime
             }
         }
         
-        internal void RenderViewData(CommandBuffer cmb, Camera cam, TextureHandle gsRenderTexture, TextureHandle depthTexture)
+        internal void StereoRenderViewData(CommandBuffer cmb, Camera cam, TextureHandle gsRenderTexture, TextureHandle depthTexture)
+        {
+            if (cam.cameraType == CameraType.Preview)
+                return;
+            
+            // 设置 TileScale 分块放缩比例
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileScale, m_TileScale);
+            
+            // 设置屏幕像素大小
+            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
+            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
+            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
+
+            // 设定 GemoState 的数据
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomLeftData,
+                m_GeomState_left_data);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomRightData,
+                    m_GeomState_right_data);
+            }
+
+            // 设定 BinnState 的数据
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
+                Props.RO_BinLeftPointListValue, m_BinState_left_point_list_values);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_BinRightPointListValue,
+                    m_BinState_right_point_list_values);
+            }
+
+
+            // 设定 ImageState 的数据
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_ImageLeftRange,
+                m_ImageState_left_ranges);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_ImageRightRange,
+                    m_ImageState_right_ranges);
+            }
+
+            // 设定输入 texture
+            cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSRenderTexture,
+                gsRenderTexture);
+            cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.GSDepthTexture,
+                depthTexture);
+            
+            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out _, out _);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.RenderViewData,
+                tile_x * m_TileScale, tile_y * m_TileScale, 1);
+        }
+        
+        internal void SinglePreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preLeftViewProjectionMatrix, Matrix4x4 preRightViewProjectionMatrix)
+        {
+            if (cam.cameraType == CameraType.Preview)
+                return;
+
+            var tr = transform;
+
+            Matrix4x4 matView = cam.worldToCameraMatrix;
+            Matrix4x4 matProj = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true);
+            Matrix4x4 matO2W = tr.localToWorldMatrix;
+            Matrix4x4 matW2O = tr.worldToLocalMatrix;
+            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
+            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
+            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            Vector4 camPos = cam.transform.position;
+
+            // calculate view dependent data for each splat
+            SetAssetDataOnCS(cmb, KernelIndices.PreProcessViewData);
+            
+            // 初始化 NumArgs
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.RightNumArgs, m_NumArgs_right);
+            }
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,
+                1, 1, 1);
+            // 设置 NumArgs
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.RightNumArgs, m_NumArgs_right);
+            }
+
+            // 设定 GemoState 的数据
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomLeftData, m_GeomState_left_data);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GeomRightData, m_GeomState_right_data);
+            }
+
+            // 设定 tile 屏幕分块信息
+            GetTileConfig(m_CSSplatUtilities, cam, out var tile_x, out var tile_y, out var block_x, out var block_y);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.TileConfig,
+                new Vector4(block_x, block_y, tile_x, tile_y));
+            
+            // 构造排序的 key【tile | depth】 和 value【coll_id】
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                Props.BinLeftPointListKey, m_BinState_left_point_list_keys);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                Props.BinLeftPointListValue, m_BinState_left_point_list_values);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                    Props.BinRightPointListKey, m_BinState_right_point_list_keys);
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                    Props.BinRightPointListValue, m_BinState_right_point_list_values);
+            }
+            
+            // 绑定上一帧的深度图
+            cmb.SetComputeTextureParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.GSPreDepthTexture,
+                depthTexture);
+            
+            // 绑定上一帧的 VP 矩阵
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreLeftVP, preLeftViewProjectionMatrix);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixPreRightVP, preRightViewProjectionMatrix);
+            }
+            
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixMV, matView * matO2W);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixObjectToWorld, matO2W);
+            cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixWorldToObject, matW2O);
+
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecWorldSpaceCameraPos, camPos);
+            cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatScale, m_SplatScale);
+            cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatOpacityScale, m_OpacityScale);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOrder, m_SHOrder);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.SHOnly, m_SHOnly ? 1 : 0);
+            
+            if (m_IsSinglePass)
+            {
+                Matrix4x4 matLView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Left);
+                Matrix4x4 matRView = cam.GetStereoViewMatrix(Camera.StereoscopicEye.Right);
+                cam.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Left);
+                Matrix4x4 matLProj =
+                    GL.GetGPUProjectionMatrix(cam.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Left), true);
+                cam.CopyStereoDeviceProjectionMatrixToNonJittered(Camera.StereoscopicEye.Right);
+                Matrix4x4 matRProj =
+                    GL.GetGPUProjectionMatrix(cam.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Right), true);
+            
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matLView);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matRView);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matLProj);
+                cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matRProj);
+                
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLV, matView);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRV, matView);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixLP, matProj);
+                // cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRP, matProj);
+            }
+            
+            m_CSSplatUtilities.GetKernelThreadGroupSizes((int)KernelIndices.PreProcessViewData, out uint gsX, out _,
+                out _);
+            
+            GetDispatchGroupNum(m_SplatCount, (int)gsX, out int countX, out int countY);
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
+                countX, countY, 1);
+        }
+
+        internal void SingleRadixSortPoints(CommandBuffer cmb, Camera cam)
+        {
+            if (cam.cameraType == CameraType.Preview)
+                return;
+            
+            // 1. 初始化 Sort 参数 buffer
+            cmb.SetComputeIntParam(m_CSSplatUtilities, "e_min", 2);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, "e_max", m_TileRenderCount);
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.LeftNumArgs, m_NumArgs_left);
+            if (m_IsSinglePass)
+            {
+                cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, Props.RightNumArgs, m_NumArgs_right);
+            }
+            cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitSortArgs, 1, 1, 1);
+            
+            // 2. 对 BinPointList 进行排序
+            m_RadixSorter_left.Sort(
+                cmb,
+                m_NumArgs_left,
+                m_BinState_left_point_list_keys,
+                m_BinState_left_point_list_values,
+                m_AltKey_left,
+                m_AltPayload_left,
+                m_GlobalHist_left,
+                m_PassHist_left,
+                true
+                );
+
+            if (m_IsSinglePass)
+            {
+                m_RadixSorter_right.Sort(
+                    cmb,
+                    m_NumArgs_right,
+                    m_BinState_right_point_list_keys,
+                    m_BinState_right_point_list_values,
+                    m_AltKey_right,
+                    m_AltPayload_right,
+                    m_GlobalHist_right,
+                    m_PassHist_right,
+                    true
+                );
+            }
+            
+            // 3. 计算 ImageState 数据
+            {
+                EnsureImageState(cam);
+                {
+                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.RO_NumArgs, m_NumArgs_left);
+                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                        Props.RO_BinPointListKey, m_BinState_left_point_list_keys);
+                    cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                        Props.ImageRange, m_ImageState_left_ranges);
+                    
+                    cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                        m_NumArgs_left, 20);
+
+                    if (m_IsSinglePass)
+                    {
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges, Props.RO_NumArgs, m_NumArgs_right);
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            Props.RO_BinPointListKey, m_BinState_right_point_list_keys);
+                        cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            Props.ImageRange, m_ImageState_right_ranges);
+                    
+                        cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.IdentifyTileRanges,
+                            m_NumArgs_right, 20);
+                    }
+                }
+            }
+        }
+        
+        internal void SingleRenderViewData(CommandBuffer cmb, Camera cam, TextureHandle gsRenderTexture, TextureHandle depthTexture)
         {
             if (cam.cameraType == CameraType.Preview)
                 return;
