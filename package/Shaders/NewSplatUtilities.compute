@@ -258,7 +258,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     
     float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0)).x;
     float preRightDepth = _GSPreDepthTexture.Load(int3(preRightMean2d.x, _VecScreenParams.y - preRightMean2d.y, 0)).y;
-    if ((preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) && (preRightDepth > 0.001 && centerRightClipPos.w - preRightDepth > 0.8)) return;
+    if ((preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) || (preRightDepth > 0.001 && centerRightClipPos.w - preRightDepth > 0.8)) return;
     #else
     // 深度剔除
     float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0));

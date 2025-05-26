@@ -36,6 +36,7 @@ namespace GaussianSplatting.Runtime
             
             private RTHandle m_preDepthTexture;
             private RTHandle m_currentDepthTexture;
+            private XRSettings.StereoRenderingMode depthStereoRenderingMode;
             private Matrix4x4 m_preViewProjectionMatrix = Matrix4x4.identity;
             private Matrix4x4 m_preLeftViewProjectionMatrix = Matrix4x4.identity;
             private Matrix4x4 m_preRightViewProjectionMatrix = Matrix4x4.identity;
@@ -68,24 +69,28 @@ namespace GaussianSplatting.Runtime
                 var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, true);
                 
                 // 初始化创建 PreDepthTexture 和 CurrentDepthTexture
-                if (m_preDepthTexture == null)
+                if (m_preDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
                 {
+                    depthStereoRenderingMode = XRSettings.stereoRenderingMode;
+                    
                     RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
+                    depthDesc.graphicsFormat = depthStereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
                     RenderingUtils.ReAllocateIfNeeded(ref m_preDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: PreGaussianSplatDepthName );
                 }
                 
-                if (m_currentDepthTexture == null)
+                if (m_currentDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
                 {
+                    depthStereoRenderingMode = XRSettings.stereoRenderingMode;
+                    
                     RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
+                    depthDesc.graphicsFormat = depthStereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
                     RenderingUtils.ReAllocateIfNeeded(ref m_currentDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: CurrentGaussianSplatDepthName );
                 }
