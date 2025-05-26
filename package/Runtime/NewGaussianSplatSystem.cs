@@ -121,7 +121,7 @@ namespace GaussianSplatting.Runtime
             var gs = kvp.Item1;
             
             // SetShaderKeywords
-            gs.SetShaderKeywords(cmb);
+            gs.SetShaderKeywords(cmb, true);
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
@@ -155,7 +155,7 @@ namespace GaussianSplatting.Runtime
             var gs = kvp.Item1;
             
             // SetShaderKeywords
-            gs.SetShaderKeywords(cmb);
+            gs.SetShaderKeywords(cmb, false);
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);

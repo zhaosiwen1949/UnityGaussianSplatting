@@ -15,8 +15,10 @@
 // #pragma multi_compile __ PAYLOAD_UINT PAYLOAD_INT PAYLOAD_FLOAT
 #pragma multi_compile __ SHOULD_ASCEND
 // #pragma multi_compile __ SORT_PAIRS
-#pragma multi_compile __ SINGLE_PASS
-// #define SINGLE_PASS
+#pragma multi_compile __ SINGLE_PASS_STEREO SINGLE_PASS_SINGLE 
+
+// #define SINGLE_PASS_STEREO
+// #define SINGLE_PASS_SINGLE
 
 // GPU sorting needs wave ops
 #pragma require int64
@@ -47,7 +49,7 @@ float4 _VecScreenParams;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
 
-#if defined(SINGLE_PASS)
+#if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
 float4x4 _MatrixLV;
 float4x4 _MatrixRV;
 float4x4 _MatrixLP;
@@ -193,7 +195,7 @@ bool IsSplatCut(float3 pos)
     return finalCut;
 }
 
-#if defined(SINGLE_PASS)
+#if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
 Texture2D<float2> _GSPreDepthTexture;
 #else
 Texture2D<float> _GSPreDepthTexture;
@@ -208,12 +210,12 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     if (idx >= _SplatCount)
         return;
     _GeomLeftData[idx] = (GeomData)0;
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     _GeomRightData[idx] = (GeomData)0;
     #endif
     
     float4x4 v_left_matrix, p_left_matrix, vp_left_matrix;
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     v_left_matrix = _MatrixLV;
     p_left_matrix = _MatrixLP;
     vp_left_matrix = mul(p_left_matrix, v_left_matrix);
@@ -232,7 +234,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerLeftClipPos = mul(vp_left_matrix, float4(centerWorldPos, 1));
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     float4 centerRightClipPos = mul(vp_right_matrix, float4(centerWorldPos, 1));
     // 视锥体剔除
     if (!(InFrustum(centerLeftClipPos, _VecScreenParams.zw) || InFrustum(centerRightClipPos, _VecScreenParams.zw))) return;
@@ -247,7 +249,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     preLeftMean2d.x = clamp(preLeftMean2d.x, 0.0f, _VecScreenParams.x);
     preLeftMean2d.y = clamp(preLeftMean2d.y, 0.0f, _VecScreenParams.y);
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     float4 preRightCenterClipPos = mul(_MatrixPreRightVP, float4(centerWorldPos, 1));
     float2 preRightCenterNDCPos = preRightCenterClipPos.xy / preRightCenterClipPos.w;
     float2 preRightMean2d = ((preRightCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
@@ -311,7 +313,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     int y_left_span = rect_left_max.y - rect_left_min.y;
     int x_left_span = rect_left_max.x - rect_left_min.x;
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     // 计算投影中心
     float2 centerRightNDCPos = centerRightClipPos.xy / centerRightClipPos.w;
     // 偏移点云在屏幕坐标系中的位置，整体移动到左下角
@@ -367,7 +369,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     _GeomLeftData[globalGemoLeftIndex].rgb_depth.y = f32tof16(col.b) << 16 | f32tof16(centerLeftClipPos.w);
     _GeomLeftData[globalGemoLeftIndex].mean2D = mean_left_2d;
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     // 采用原子加，来计算索引位置
     uint globalGemoRightIndex;
     InterlockedAdd(_RightNumArgs[0], 1, globalGemoRightIndex);
@@ -384,7 +386,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
         mean_left_2d, centerLeftClipPos.w, globalGemoLeftIndex,
         _LeftNumArgs, _BinLeftPointListKey, _BinLeftPointListValue);
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     UpdatePointList(x_right_span, y_right_span, conic_right_2d, col.a, _TileConfig,
         bbox_right_argmin, bbox_right_argmax, bbox_right_min, bbox_right_max, rect_right_min, rect_right_max,
         mean_right_2d, centerRightClipPos.w, globalGemoRightIndex,
@@ -428,7 +430,7 @@ void CSInitImageRanges (uint3 global_id : SV_DispatchThreadID)
     
     _ImageLeftRange[idx] = (uint2)0;
 
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     _ImageRightRange[idx] = (uint2)0;
     #endif
 }
@@ -446,7 +448,7 @@ void CSInitNumArgs (uint3 global_id : SV_DispatchThreadID)
     _LeftNumArgs[6] = 1;
     _LeftNumArgs[7] = 1;
 
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     _RightNumArgs[0] = 0;
     _RightNumArgs[1] = 0;
     _RightNumArgs[2] = 1;
@@ -484,7 +486,7 @@ void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
         _LeftNumArgs[7] = 1;
     }
     
-    #if defined(SINGLE_PASS)
+    #if defined(SINGLE_PASS_STEREO)
     {
         uint count = clamp(_RightNumArgs[1], e_min, e_max);
     
@@ -510,7 +512,7 @@ void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
     #endif
 }
 
-#if defined(SINGLE_PASS)
+#if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
 RWTexture2DArray<float4> _GSRenderTexture;
 RWTexture2D<float2> _GSDepthTexture;
 #else
@@ -537,14 +539,14 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         CalcPixel(group_id.y * horizontal_blocks + group_id.x, global_id.xy, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
             left_T, left_color, left_depth, left_last_depth);
 
-        #if defined(SINGLE_PASS)
+        #if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
         float right_T, right_depth, right_last_depth;
         half3 right_color;
         CalcPixel(group_id.y * horizontal_blocks + group_id.x, global_id.xy, _RO_ImageRightRange, _RO_BinRightPointListValue, _RO_GeomRightData,
             right_T, right_color, right_depth, right_last_depth);
         #endif
         
-        #if defined(SINGLE_PASS)
+        #if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(GammaToLinearSpace(left_color), 1.0 - left_T);
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 1)] = float4(GammaToLinearSpace(right_color), 1.0 - right_T);
         _GSDepthTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = float2(left_last_depth, right_last_depth);

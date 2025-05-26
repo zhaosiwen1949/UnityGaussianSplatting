@@ -125,7 +125,8 @@ namespace GaussianSplatting.Runtime
         private GraphicsBuffer m_PassHist_right;
         
         // Shader Keyword
-        private LocalKeyword m_SinglePassKeyWord;
+        private LocalKeyword m_SinglePassStereoKeyWord;
+        private LocalKeyword m_SinglePassSingleKeyWord;
         
         GaussianSplatAsset m_PrevAsset;
         Hash128 m_PrevHash;
@@ -240,7 +241,8 @@ namespace GaussianSplatting.Runtime
                 return;
             
             // 初始化 ShaderKeywords
-            m_SinglePassKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS");
+            m_SinglePassStereoKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS_STEREO");
+            m_SinglePassSingleKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS_SINGLE");
 
             m_SplatCount = asset.splatCount;
             m_TileRenderCount = asset.splatCount;
@@ -444,15 +446,22 @@ namespace GaussianSplatting.Runtime
             m_Registered = false;
         }
 
-        internal void SetShaderKeywords(CommandBuffer cmb)
+        internal void SetShaderKeywords(CommandBuffer cmb, bool isStereo)
         {
-            if (m_IsSinglePass)
+            if (m_IsSinglePass && isStereo)
             {
-                cmb.EnableKeyword(m_CSSplatUtilities, m_SinglePassKeyWord);
+                cmb.EnableKeyword(m_CSSplatUtilities, m_SinglePassStereoKeyWord);
+                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassSingleKeyWord);
+            }
+            else if (m_IsSinglePass && !isStereo)
+            {
+                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassStereoKeyWord);
+                cmb.EnableKeyword(m_CSSplatUtilities, m_SinglePassSingleKeyWord);
             }
             else
             {
-                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassKeyWord);
+                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassStereoKeyWord);
+                cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassSingleKeyWord);
             }
         }
         
