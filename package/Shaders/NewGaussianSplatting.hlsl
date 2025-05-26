@@ -19,6 +19,73 @@ struct GeomData
     float2 mean2D;
 };
 
+bool CalcPixel(uint range_id, uint2 global_id,
+    StructuredBuffer<uint2> image_range,
+    StructuredBuffer<uint> bin_point_list_value,
+    StructuredBuffer<GeomData> geom_data,
+    out float T, out half3 color, out float depth, out float last_depth)
+{
+    // 计算迭代次数
+    uint2 left_range = image_range[range_id];
+        
+    int left_toDo = left_range.y - left_range.x;
+        
+    if (left_toDo > 200 * BLOCK_SIZE) return false;
+        
+    // 累计透明度、颜色和深度图输出
+    T = 1.0f;
+    color = 0.0f;
+    depth = 0.0f;
+    last_depth = 0.0f;
+
+    // 遍历 Tile 中保存的高斯数据
+    // 每个 thread 负责一个像素，逐像素累计高斯数据
+
+    bool left_done = false;
+    for (int j = 0; !left_done && j < left_toDo; j++)
+    {
+        int coll_id = bin_point_list_value[left_range.x + j];
+        // 根据像素到 2D 高斯中心点的距离，计算衰减度
+        float2 xy = geom_data[coll_id].mean2D;
+            
+        float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
+
+        float4 con_o = geom_data[coll_id].conic_opacity;
+        float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+        // if (power > 0.0f)
+        //     continue;
+
+        // 计算 alpha 透明度
+        float alpha = min(0.99f, con_o.w * exp(power));
+        // if (alpha < 1.0f / 255.0f)
+        //     continue;
+
+        float test_T = T * (1 - alpha);
+        if (test_T < TEST_ALPHA)
+        {
+            left_done = true;
+            continue;
+        }
+
+        // 累加颜色
+        half3 tmp_color;
+        tmp_color.r = f16tof32(geom_data[coll_id].rgb_depth.x >> 16);
+        tmp_color.g = f16tof32(geom_data[coll_id].rgb_depth.x);
+        tmp_color.b = f16tof32(geom_data[coll_id].rgb_depth.y >> 16);
+        color += tmp_color * alpha * T;
+
+        // 纪录截至时的最大深度
+        last_depth = f16tof32(geom_data[coll_id].rgb_depth.y);
+
+        // 累加深度
+        depth += last_depth * alpha * T;
+            
+        // 更新累积 alpha
+        T = test_T;
+    }
+    return true;
+}
+
 uint SwizzleDispatchThreadId(uint3 id)
 {
     return id.x + id.y * MAX_DISPATCH_GROUP * GROUP_SIZE;
@@ -39,6 +106,144 @@ inline float2 ComputeEllipseIntersection(
         (-con_o.y * h - sqrt_term) / coeff + p_v,
         (-con_o.y * h + sqrt_term) / coeff + p_v
     );
+}
+
+void UpdatePointList(int x_span, int y_span, float3 conic_2d, float alpha, float4 tile_config,
+    float2 bbox_argmin, float2 bbox_argmax,
+    float2 bbox_min, float2 bbox_max,
+    int2 rect_min, int2 rect_max,
+    float2 mean_2d, float depth, uint id,
+    RWStructuredBuffer<uint> num_args,
+    RWStructuredBuffer<uint64_t> bin_point_list_key,
+    RWStructuredBuffer<uint> bin_point_list_value)
+{
+    // ---- AccuTile Code ---- //
+    if (x_span * y_span == 1)
+    {
+        int u = rect_min.x;
+        int v = rect_min.y;
+
+        uint globalBinPointIndex;
+        InterlockedAdd(num_args[1], 1, globalBinPointIndex);
+
+        uint d = FloatToUint(depth);
+        uint64_t tile_key = (v * (uint)tile_config.z + u);
+        tile_key <<= 32;
+        bin_point_list_key[globalBinPointIndex] = tile_key | ((uint64_t)d & (((uint64_t)1U << 32) - 1));
+        bin_point_list_value[globalBinPointIndex] = id;
+    }
+    else
+    {
+        bool isY = y_span < x_span;
+        float disc = conic_2d.y * conic_2d.y - conic_2d.x * conic_2d.z;
+        float t = 2.0f * log(alpha * ALPHA_T);
+
+        // Set variables based on the isY flag
+        float BLOCK_U = isY ? tile_config.y : tile_config.x;
+        float BLOCK_V = isY ? tile_config.x : tile_config.y;
+
+        if (isY)
+        {
+            rect_min = int2(rect_min.y, rect_min.x);
+            rect_max = int2(rect_max.y, rect_max.x);
+
+            bbox_min = float2(bbox_min.y, bbox_min.x);
+            bbox_max = float2(bbox_max.y, bbox_max.x);
+
+            bbox_argmin = float2(bbox_argmin.y, bbox_argmin.x);
+            bbox_argmax = float2(bbox_argmax.y, bbox_argmax.x);
+        }
+
+        float2 intersect_min_line, intersect_max_line;
+        float ellipse_min, ellipse_max;
+        float min_line, max_line;
+
+        // Initialize max line
+        // Just need the min to be >= all points on the ellipse
+        // and  max to be <= all points on the ellipse
+        intersect_max_line = float2(bbox_max.y, bbox_min.y);
+
+        min_line = rect_min.x * BLOCK_U;
+        // Initialize min line intersections.
+        if (bbox_min.x <= min_line)
+        {
+            // Boundary case
+            intersect_min_line = ComputeEllipseIntersection(
+                conic_2d, disc, t, mean_2d, isY, rect_min.x * BLOCK_U);
+        }
+        else
+        {
+            // Same as max line
+            intersect_min_line = intersect_max_line;
+        }
+
+
+        // Loop over either y slices or x slices based on the `isY` flag.
+        for (int u = rect_min.x; u < rect_max.x; ++u)
+        {
+            // Starting from the bottom or left, we will only need to compute
+            // intersections at the next line.
+            max_line = min_line + BLOCK_U;
+            if (max_line <= bbox_max.x)
+            {
+                intersect_max_line = ComputeEllipseIntersection(
+                    conic_2d, disc, t, mean_2d, isY, max_line);
+            }
+
+            // If the bbox min is in this slice, then it is the minimum
+            // ellipse point in this slice. Otherwise, the minimum ellipse
+            // point will be the minimum of the intersections of the min/max lines.
+            if (min_line <= bbox_argmin.y && bbox_argmin.y < max_line)
+            {
+                ellipse_min = bbox_min.y;
+            }
+            else
+            {
+                ellipse_min = min(intersect_min_line.x, intersect_max_line.x);
+            }
+
+            // If the bbox max is in this slice, then it is the maximum
+            // ellipse point in this slice. Otherwise, the maximum ellipse
+            // point will be the maximum of the intersections of the min/max lines.
+            if (min_line <= bbox_argmax.y && bbox_argmax.y < max_line)
+            {
+                ellipse_max = bbox_max.y;
+            }
+            else
+            {
+                ellipse_max = max(intersect_min_line.y, intersect_max_line.y);
+            }
+
+            // Convert ellipse_min/ellipse_max to tiles touched
+            // First map back to tile coordinates, then subtract.
+            int min_tile_v = clamp((int)(ellipse_min / BLOCK_V), rect_min.y, rect_max.y);
+
+            int max_tile_v = clamp((int)(ellipse_max / BLOCK_V + 1), rect_min.y, rect_max.y);
+
+
+            uint tiles_count = max_tile_v - min_tile_v;
+            uint globalBinPointIndex;
+            InterlockedAdd(num_args[1], tiles_count, globalBinPointIndex);
+            // Loop over tiles and add to keys array
+            for (int v = min_tile_v; v < max_tile_v; v++)
+            {
+                // For each tile that the Gaussian overlaps, emit a
+                // key/value pair. The key is |  tile ID  |      depth      |,
+                // and the value is the ID of the Gaussian. Sorting the values
+                // with this key yields Gaussian IDs in a list, such that they
+                // are first sorted by tile and then by depth.
+                uint d = FloatToUint(depth);
+                uint64_t tile_key = isY ? (u * (uint)tile_config.z + v) : (v * (uint)tile_config.z + u);
+                tile_key <<= 32;
+                bin_point_list_key[globalBinPointIndex] = tile_key | ((uint64_t)d & (((uint64_t)1U << 32) - 1));
+                bin_point_list_value[globalBinPointIndex] = id;
+                globalBinPointIndex++;
+            }
+            // Max line of this tile slice will be min lin of next tile slice
+            intersect_min_line = intersect_max_line;
+            min_line = max_line;
+        }
+    }
 }
 
 bool DuplicateToTilesTouched(
