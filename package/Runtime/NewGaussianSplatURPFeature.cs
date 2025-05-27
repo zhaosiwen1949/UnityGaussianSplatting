@@ -33,7 +33,8 @@ namespace GaussianSplatting.Runtime
             const string ProfilerTag = "GaussianSplatRenderGraph";
             static readonly ProfilingSampler s_profilingSampler = new(ProfilerTag);
             static readonly int s_gaussianSplatRT = Shader.PropertyToID(GaussianSplatRTName);
-            
+
+            private float TextureScale = 1.0f;
             private RTHandle m_preDepthTexture;
             private RTHandle m_currentDepthTexture;
             private XRSettings.StereoRenderingMode depthStereoRenderingMode;
@@ -59,8 +60,11 @@ namespace GaussianSplatting.Runtime
 
                 var cameraData = frameData.Get<UniversalCameraData>();
                 var resourceData = frameData.Get<UniversalResourceData>();
+                TextureScale = NewGaussianSplatRenderSystem.instance.GetTextureScale();
 
                 RenderTextureDescriptor rtDesc = cameraData.cameraTargetDescriptor;
+                rtDesc.width = (int)(rtDesc.width * TextureScale);
+                rtDesc.height = (int)(rtDesc.height * TextureScale);
                 rtDesc.depthBufferBits = 0;
                 rtDesc.msaaSamples = 1;
                 rtDesc.autoGenerateMips = false;
@@ -73,7 +77,7 @@ namespace GaussianSplatting.Runtime
                 {
                     depthStereoRenderingMode = XRSettings.stereoRenderingMode;
                     
-                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
+                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor((int)(rtDesc.width * TextureScale), (int)(rtDesc.height * TextureScale));
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
@@ -86,7 +90,7 @@ namespace GaussianSplatting.Runtime
                 {
                     depthStereoRenderingMode = XRSettings.stereoRenderingMode;
                     
-                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor(rtDesc.width, rtDesc.height);
+                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor((int)(rtDesc.width * TextureScale), (int)(rtDesc.height * TextureScale));
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
@@ -176,7 +180,7 @@ namespace GaussianSplatting.Runtime
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture);
+                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, 0, true);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }

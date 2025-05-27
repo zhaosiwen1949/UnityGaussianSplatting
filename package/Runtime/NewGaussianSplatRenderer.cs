@@ -74,6 +74,7 @@ namespace GaussianSplatting.Runtime
         [Range(1, 10)] public int m_TileScale = 2;
         [Range(0.5f, 1.0f)] public float m_WidthScale = 0.75f;
         [Range(0.5f, 1.0f)] public float m_HeightScale = 0.75f;
+        [Range(0.1f, 1.0f)] public float m_TextureScale = 0.5f;
         
 
         public GaussianCutout[] m_Cutouts;
@@ -475,6 +476,13 @@ namespace GaussianSplatting.Runtime
                 cmb.DisableKeyword(m_CSSplatUtilities, m_SinglePassSingleKeyWord);
             }
         }
+
+        Vector4 GetScreenParams(Camera cam)
+        {
+            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
+            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
+            return new Vector4((eyeW != 0 ? eyeW : screenW) * m_TextureScale, (eyeH != 0 ? eyeH : screenH) * m_TextureScale, m_WidthScale, m_HeightScale);
+        }
         
         void GetTileConfig(ComputeShader cs, Camera cam, out int tileX, out int tileY, out int blockX, out int blockY)
         {
@@ -484,16 +492,13 @@ namespace GaussianSplatting.Runtime
             }
             
             // 计算 tile 数量
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            int screen_width = eyeW != 0 ? eyeW : screenW;
-            int screen_height = eyeH != 0 ? eyeH : screenH;
+            Vector4 screenPar = GetScreenParams(cam);
             cs.GetKernelThreadGroupSizes((int)KernelIndices.RenderViewData, out uint gsX, out uint gsY,
                 out _);
             blockX = (int)gsX * m_TileScale;
             blockY = (int)gsY * m_TileScale;
-            tileX = (int)((screen_width * m_WidthScale + blockX - 1) / blockX);
-            tileY = (int)(screen_height * m_HeightScale + blockY - 1) / blockY;
+            tileX = (int)((screenPar.x * m_WidthScale + blockX - 1) / blockX);
+            tileY = (int)(screenPar.y * m_HeightScale + blockY - 1) / blockY;
         }
 
         void GetDispatchGroupNum(int count, int groupDim, out int countX, out int countY)
@@ -522,9 +527,7 @@ namespace GaussianSplatting.Runtime
             Matrix4x4 matProj = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true);
             Matrix4x4 matO2W = tr.localToWorldMatrix;
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            Vector4 screenPar = GetScreenParams(cam);
             Vector4 camPos = cam.transform.position;
 
             // calculate view dependent data for each splat
@@ -697,9 +700,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileScale, m_TileScale);
             
             // 设置屏幕像素大小
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            Vector4 screenPar = GetScreenParams(cam);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
@@ -752,9 +753,7 @@ namespace GaussianSplatting.Runtime
             Matrix4x4 matProj = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true);
             Matrix4x4 matO2W = tr.localToWorldMatrix;
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            Vector4 screenPar = GetScreenParams(cam);
             Vector4 camPos = cam.transform.position;
 
             // var m_p = GL.GetGPUProjectionMatrix(Matrix4x4.Perspective(60, 3024.0f / 1680.0f, 0.01f, 1000), true);
@@ -876,9 +875,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeIntParam(m_CSSplatUtilities, Props.TileScale, m_TileScale);
             
             // 设置屏幕像素大小
-            int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
-            int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            Vector4 screenPar = new Vector4(eyeW != 0 ? eyeW : screenW, eyeH != 0 ? eyeH : screenH, m_WidthScale, m_HeightScale);
+            Vector4 screenPar = GetScreenParams(cam);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
 
             // 设定 GemoState 的数据
@@ -911,7 +908,7 @@ namespace GaussianSplatting.Runtime
                 Matrix4x4 matRProj =
                     GL.GetGPUProjectionMatrix(cam.GetStereoNonJitteredProjectionMatrix(Camera.StereoscopicEye.Right), true);
 
-                cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.Focal, (float)(eyeH * 0.5 * matLProj.m11));
+                cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.Focal, (float)(screenPar.y * 0.5 * matLProj.m11));
                 cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixRPRVLV, matRProj * matRView * matLView.inverse);
             }
             
