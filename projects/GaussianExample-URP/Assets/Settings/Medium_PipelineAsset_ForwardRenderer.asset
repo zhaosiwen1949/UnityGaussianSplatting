@@ -26,6 +26,7 @@ MonoBehaviour:
   m_Name: NewGaussianSplatURPFeature
   m_EditorClassIdentifier: 
   m_Active: 1
+  blitShader: {fileID: 4800000, guid: ca1055a08ea6dde43bc0261de7ba8a51, type: 3}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

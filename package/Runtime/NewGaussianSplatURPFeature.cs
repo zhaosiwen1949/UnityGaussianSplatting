@@ -33,6 +33,8 @@ namespace GaussianSplatting.Runtime
             const string ProfilerTag = "GaussianSplatRenderGraph";
             static readonly ProfilingSampler s_profilingSampler = new(ProfilerTag);
             static readonly int s_gaussianSplatRT = Shader.PropertyToID(GaussianSplatRTName);
+            
+            public Material blitMaterial { get; set; }
 
             private float TextureScale = 1.0f;
             private RTHandle m_preDepthTexture;
@@ -45,6 +47,7 @@ namespace GaussianSplatting.Runtime
             class PassData
             {
                 internal UniversalCameraData CameraData;
+                internal Material BlitMaterial;
                 internal TextureHandle SourceTexture;
                 internal TextureHandle SourceDepth;
                 internal TextureHandle GaussianSplatRT;
@@ -52,7 +55,9 @@ namespace GaussianSplatting.Runtime
                 internal TextureHandle CurrentGaussianSplatDepth;
                 internal Matrix4x4 PreLeftViewProjectionMatrix;
                 internal Matrix4x4 PreRightViewProjectionMatrix;
+                
             }
+            
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
             {
@@ -107,6 +112,7 @@ namespace GaussianSplatting.Runtime
                 TextureHandle currentDepthTextureHandle = renderGraph.ImportTexture(m_currentDepthTexture);
 
                 passData.CameraData = cameraData;
+                passData.BlitMaterial = blitMaterial;
                 passData.SourceTexture = resourceData.activeColorTexture;
                 passData.SourceDepth = resourceData.activeDepthTexture;
                 passData.GaussianSplatRT = textureHandle;
@@ -180,7 +186,7 @@ namespace GaussianSplatting.Runtime
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, 0, true);
+                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.BlitMaterial, 0);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -194,12 +200,15 @@ namespace GaussianSplatting.Runtime
         
         NewGSRenderPass m_Pass;
         bool m_HasCamera;
+        
+        public Shader blitShader;
 
         public override void Create()
         {
            m_Pass = new NewGSRenderPass
             {
-                renderPassEvent = RenderPassEvent.BeforeRenderingTransparents
+                renderPassEvent = RenderPassEvent.BeforeRenderingTransparents,
+                blitMaterial = CoreUtils.CreateEngineMaterial(blitShader)
             };
         }
 
