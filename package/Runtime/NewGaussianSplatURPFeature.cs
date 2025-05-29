@@ -39,7 +39,7 @@ namespace GaussianSplatting.Runtime
             private float TextureScale = 1.0f;
             private RTHandle m_preDepthTexture;
             private RTHandle m_currentDepthTexture;
-            private XRSettings.StereoRenderingMode depthStereoRenderingMode;
+            private XRSettings.StereoRenderingMode depthStereoRenderingMode = XRSettings.StereoRenderingMode.MultiPass;
             private Matrix4x4 m_preViewProjectionMatrix = Matrix4x4.identity;
             private Matrix4x4 m_preLeftViewProjectionMatrix = Matrix4x4.identity;
             private Matrix4x4 m_preRightViewProjectionMatrix = Matrix4x4.identity;
@@ -78,29 +78,21 @@ namespace GaussianSplatting.Runtime
                 var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, true);
                 
                 // 初始化创建 PreDepthTexture 和 CurrentDepthTexture
-                if (m_preDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
+                if (m_preDepthTexture == null || m_currentDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
                 {
                     depthStereoRenderingMode = XRSettings.stereoRenderingMode;
                     
-                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor((int)(rtDesc.width * TextureScale), (int)(rtDesc.height * TextureScale));
+                    // RenderTextureDescriptor depthDesc = new RenderTextureDescriptor((int)(rtDesc.width * TextureScale), (int)(rtDesc.height * TextureScale));
+                    RenderTextureDescriptor depthDesc = cameraData.cameraTargetDescriptor;
+                    depthDesc.width = (int)(depthDesc.width * TextureScale);
+                    depthDesc.height = (int)(depthDesc.height * TextureScale);
                     depthDesc.depthBufferBits = 0;
                     depthDesc.msaaSamples = 1;
                     depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = depthStereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
+                    depthDesc.graphicsFormat = GraphicsFormat.R16_SFloat;
                     depthDesc.enableRandomWrite = true;
+                    depthDesc.vrUsage = depthStereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? VRTextureUsage.TwoEyes : VRTextureUsage.None;
                     RenderingUtils.ReAllocateIfNeeded(ref m_preDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: PreGaussianSplatDepthName );
-                }
-                
-                if (m_currentDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
-                {
-                    depthStereoRenderingMode = XRSettings.stereoRenderingMode;
-                    
-                    RenderTextureDescriptor depthDesc = new RenderTextureDescriptor((int)(rtDesc.width * TextureScale), (int)(rtDesc.height * TextureScale));
-                    depthDesc.depthBufferBits = 0;
-                    depthDesc.msaaSamples = 1;
-                    depthDesc.autoGenerateMips = false;
-                    depthDesc.graphicsFormat = depthStereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced ? GraphicsFormat.R16G16_SFloat : GraphicsFormat.R16_SFloat;
-                    depthDesc.enableRandomWrite = true;
                     RenderingUtils.ReAllocateIfNeeded(ref m_currentDepthTexture, depthDesc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: CurrentGaussianSplatDepthName );
                 }
                 
@@ -110,7 +102,7 @@ namespace GaussianSplatting.Runtime
                 // 引入 PreDepthTexture 和 CurrentDepthTexture
                 TextureHandle preDepthTextureHandle = renderGraph.ImportTexture(m_preDepthTexture);
                 TextureHandle currentDepthTextureHandle = renderGraph.ImportTexture(m_currentDepthTexture);
-
+                
                 passData.CameraData = cameraData;
                 passData.BlitMaterial = blitMaterial;
                 passData.SourceTexture = resourceData.activeColorTexture;
@@ -164,17 +156,7 @@ namespace GaussianSplatting.Runtime
                     using var _ = new ProfilingScope(commandBuffer, s_profilingSampler);
                     
                     // Tile 渲染方法
-                    // NewGaussianSplatRenderSystem.instance.TileStereoRenderSplats(
-                    //     data.CameraData.camera,
-                    //     commandBuffer,
-                    //     data.GaussianSplatRT,
-                    //     data.PreGaussianSplatDepth,
-                    //     data.CurrentGaussianSplatDepth,
-                    //     data.PreLeftViewProjectionMatrix,
-                    //     data.PreRightViewProjectionMatrix
-                    // );
-                    
-                    NewGaussianSplatRenderSystem.instance.TileSingleRenderSplats(
+                    NewGaussianSplatRenderSystem.instance.TileStereoRenderSplats(
                         data.CameraData.camera,
                         commandBuffer,
                         data.GaussianSplatRT,
@@ -184,9 +166,19 @@ namespace GaussianSplatting.Runtime
                         data.PreRightViewProjectionMatrix
                     );
                     
+                    // NewGaussianSplatRenderSystem.instance.TileSingleRenderSplats(
+                    //     data.CameraData.camera,
+                    //     commandBuffer,
+                    //     data.GaussianSplatRT,
+                    //     data.PreGaussianSplatDepth,
+                    //     data.CurrentGaussianSplatDepth,
+                    //     data.PreLeftViewProjectionMatrix,
+                    //     data.PreRightViewProjectionMatrix
+                    // );
+                    
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    Blitter.BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.BlitMaterial, 0);
+                    BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.CurrentGaussianSplatDepth, data.BlitMaterial, 0);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -195,6 +187,22 @@ namespace GaussianSplatting.Runtime
             {
                 m_preDepthTexture?.Release();
                 m_currentDepthTexture?.Release();
+            }
+            
+            static MaterialPropertyBlock s_PropertyBlock = new MaterialPropertyBlock();
+            public static readonly int _BlitTexture = Shader.PropertyToID("_BlitTexture");
+            public static readonly int _BlitScaleBias = Shader.PropertyToID("_BlitScaleBias");
+            public static readonly int _BlitDepth = Shader.PropertyToID("_BlitDepth");
+            private static void BlitCameraTexture(CommandBuffer cmd, RTHandle source, RTHandle destination, RTHandle depth, Material material, int pass)
+            {
+                Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                // Will set the correct camera viewport as well.
+                CoreUtils.SetRenderTarget(cmd, destination);
+                s_PropertyBlock.SetVector(_BlitScaleBias, viewportScale);
+                s_PropertyBlock.SetTexture(_BlitTexture, source);
+                s_PropertyBlock.SetTexture(_BlitDepth, depth);
+                cmd.DrawProcedural(Matrix4x4.identity, material, pass, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                s_PropertyBlock.Clear();
             }
         }
         

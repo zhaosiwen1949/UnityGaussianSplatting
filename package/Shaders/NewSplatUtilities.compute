@@ -202,7 +202,7 @@ bool IsSplatCut(float3 pos)
 }
 
 #if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
-Texture2D<float2> _GSPreDepthTexture;
+Texture2DArray<float> _GSPreDepthTexture;
 #else
 Texture2D<float> _GSPreDepthTexture;
 #endif
@@ -266,16 +266,16 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     preRightMean2d.x = clamp(preRightMean2d.x, 0.0f, _VecScreenParams.x);
     preRightMean2d.y = clamp(preRightMean2d.y, 0.0f, _VecScreenParams.y);
     
-    float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0)).x;
-    float preRightDepth = _GSPreDepthTexture.Load(int3(preRightMean2d.x, _VecScreenParams.y - preRightMean2d.y, 0)).y;
+    float preLeftDepth = _GSPreDepthTexture.Load(int4(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0, 0));
+    float preRightDepth = _GSPreDepthTexture.Load(int4(preRightMean2d.x, _VecScreenParams.y - preRightMean2d.y, 1, 0));
     if ((preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) || (preRightDepth > 0.001 && centerRightClipPos.w - preRightDepth > 0.8)) return;
     #elif defined(SINGLE_PASS_SINGLE)
-    float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0)).x;
+    float preLeftDepth = _GSPreDepthTexture.Load(int4(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0, 0));
     if (preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) return;
     #else
     // 深度剔除
     float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0));
-    if (preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) return;
+    // if (preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) return;
     #endif
     
     half4 color = LoadSplatColor(idx);
@@ -526,7 +526,7 @@ void CSInitSortArgs (uint3 global_id : SV_DispatchThreadID)
 
 #if defined(SINGLE_PASS_STEREO) || defined(SINGLE_PASS_SINGLE)
 RWTexture2DArray<float4> _GSRenderTexture;
-RWTexture2D<float2> _GSDepthTexture;
+RWTexture2DArray<float> _GSDepthTexture;
 #else
 RWTexture2D<float4> _GSRenderTexture;
 RWTexture2D<float> _GSDepthTexture;
@@ -559,7 +559,8 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(GammaToLinearSpace(left_color), 1.0 - left_T);
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 1)] = float4(GammaToLinearSpace(right_color), 1.0 - right_T);
-        _GSDepthTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = float2(left_last_depth, right_last_depth);
+        _GSDepthTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = left_last_depth;
+        _GSDepthTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 1)] = right_last_depth;
         #elif defined(SINGLE_PASS_SINGLE)
         float3 gamma_color = GammaToLinearSpace(left_color);
         float scale = left_depth / _Focal;
@@ -570,7 +571,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(gamma_color, 1.0 - left_T);
         _GSRenderTexture[uint3(right_mean_2d.x + w_offset, H + h_offset - right_mean_2d.y, 1)] = float4(gamma_color, 1.0 - left_T);
-        _GSDepthTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = float2(left_last_depth, 0);
+        _GSDepthTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = left_last_depth;
         #else
         _GSRenderTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = float4(GammaToLinearSpace(left_color), 1.0 - left_T);
         _GSDepthTexture[uint2(global_id.x + w_offset, H + h_offset - global_id.y)] = left_last_depth;
