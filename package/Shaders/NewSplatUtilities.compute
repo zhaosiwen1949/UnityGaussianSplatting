@@ -275,7 +275,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     #else
     // 深度剔除
     float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0));
-    // if (preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) return;
+    if (preLeftDepth > 0.001 && centerLeftClipPos.w - preLeftDepth > 0.8) return;
     #endif
     
     half4 color = LoadSplatColor(idx);
