@@ -256,35 +256,28 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     #endif
     
     float4 preLeftCenterClipPos = mul(_MatrixPreLeftVP, float4(centerWorldPos, 1));
-    float2 preLeftCenterNDCPos = preLeftCenterClipPos.xy / preLeftCenterClipPos.w;
-    float2 preLeftMean2d = ((preLeftCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
-    // preLeftMean2d.x = clamp(preLeftMean2d.x, 0.0f, _VecScreenParams.x);
-    // preLeftMean2d.y = clamp(preLeftMean2d.y, 0.0f, _VecScreenParams.y);
+    float2 preLeftCenterNDCPos = (preLeftCenterClipPos.xy / preLeftCenterClipPos.w + 1) * 0.5;
     
     #if defined(SINGLE_PASS_STEREO)
     float4 preRightCenterClipPos = mul(_MatrixPreRightVP, float4(centerWorldPos, 1));
-    float2 preRightCenterNDCPos = preRightCenterClipPos.xy / preRightCenterClipPos.w;
-    float2 preRightMean2d = ((preRightCenterNDCPos + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
-    // preRightMean2d.x = clamp(preRightMean2d.x, 0.0f, _VecScreenParams.x);
-    // preRightMean2d.y = clamp(preRightMean2d.y, 0.0f, _VecScreenParams.y);
+    float2 preRightCenterNDCPos = (preRightCenterClipPos.xy / preRightCenterClipPos.w + 1) * 0.5;
 
-    float3 left_uv = float3(preLeftMean2d.x / _VecScreenParams.x, (_VecScreenParams.y - preLeftMean2d.y) / _VecScreenParams.y, 0);
-    float3 right_uv = float3(preRightMean2d.x / _VecScreenParams.x, (_VecScreenParams.y - preRightMean2d.y) / _VecScreenParams.y, 1);
-    // float preLeftDepth = _GSPreDepthTexture.Load(int4(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0, 0));
-    // float preRightDepth = _GSPreDepthTexture.Load(int4(preRightMean2d.x, _VecScreenParams.y - preRightMean2d.y, 1, 0));
+    float2 offset = (1.0 - _VecScreenParams.zw) * 0.45;
+    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset), 0);
+    float3 right_uv = float3(clamp(float2(preRightCenterNDCPos.x, 1.0 - preRightCenterNDCPos.y), offset, 1.0 - offset), 1);
+    
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     float preRightDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, right_uv, 0);
     if ((preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) || (preRightDepth > 0.0 && centerRightClipPos.w - preRightDepth > _DepthCullingThreshold)) return;
-    // if ((preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold)) return;
     #elif defined(SINGLE_PASS_SINGLE)
-    float3 left_uv = float3(preLeftMean2d.x / _VecScreenParams.x, (_VecScreenParams.y - preLeftMean2d.y) / _VecScreenParams.y, 0);
-    // float preLeftDepth = _GSPreDepthTexture.Load(int4(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0, 0));
+    float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
+    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset), 0);
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
     #else
     // 深度剔除
-    // float preLeftDepth = _GSPreDepthTexture.Load(int3(preLeftMean2d.x, _VecScreenParams.y - preLeftMean2d.y, 0));
-    float2 left_uv = float2(preLeftMean2d.x / _VecScreenParams.x, (_VecScreenParams.y - preLeftMean2d.y) / _VecScreenParams.y);
+    float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
+    float2 left_uv = clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset);
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
     #endif
