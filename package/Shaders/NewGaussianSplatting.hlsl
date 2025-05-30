@@ -19,6 +19,15 @@ struct GeomData
     float2 mean2D;
 };
 
+inline half3 GammaToLinearSpace (half3 sRGB)
+{
+    // Approximate version from http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html?m=1
+    return sRGB * (sRGB * (sRGB * 0.305306011h + 0.682171111h) + 0.012522878h);
+
+    // Precise version, useful for debugging.
+    //return half3(GammaToLinearSpaceExact(sRGB.r), GammaToLinearSpaceExact(sRGB.g), GammaToLinearSpaceExact(sRGB.b));
+}
+
 bool CalcPixel(uint range_id, uint2 global_id,
     StructuredBuffer<uint2> image_range,
     StructuredBuffer<uint> bin_point_list_value,
@@ -36,7 +45,7 @@ bool CalcPixel(uint range_id, uint2 global_id,
     T = 1.0f;
     color = 0.0f;
     depth = 0.0f;
-    last_depth = 0.0f;
+    last_depth = 100.0f;
 
     // 遍历 Tile 中保存的高斯数据
     // 每个 thread 负责一个像素，逐像素累计高斯数据

@@ -44,9 +44,9 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
                 color_sum = color_sum / weight_sum;
             }
             
-            // return SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, input.texcoord.xy, _BlitMipLevel);
+            return SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, input.texcoord.xy, _BlitMipLevel);
 
-            return float4(SAMPLE_TEXTURE2D_X_LOD(_BlitDepth, sampler_LinearClamp, uv, 0)/10.0);
+            // return float4(SAMPLE_TEXTURE2D_X_LOD(_BlitDepth, sampler_LinearClamp, uv, 0)/10.0);
         }
     ENDHLSL
     

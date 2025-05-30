@@ -125,17 +125,17 @@ namespace GaussianSplatting.Runtime
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
-            gs.StereoPreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
+            gs.PreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix, true);
             cmb.EndSample(s_ProfPreProcess);
                 
             // RadixSort
             cmb.BeginSample(s_ProfRadixSort);
-            gs.StereoRadixSortPoints(cmb, cam);
+            gs.RadixSortPoints(cmb, cam, true);
             cmb.EndSample(s_ProfRadixSort);
             
             // TileRender
             cmb.BeginSample(s_ProfDraw);
-            gs.StereoRenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
+            gs.RenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture, true);
             cmb.EndSample(s_ProfDraw);
         }
         
@@ -159,17 +159,17 @@ namespace GaussianSplatting.Runtime
             
             // PreProcess
             cmb.BeginSample(s_ProfPreProcess);
-            gs.SinglePreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix);
+            gs.PreProcessViewData(cmb, cam, preDepthTexture, preLeftViewProjectionMatrix, preRightViewProjectionMatrix, false);
             cmb.EndSample(s_ProfPreProcess);
                 
             // RadixSort
             cmb.BeginSample(s_ProfRadixSort);
-            gs.SingleRadixSortPoints(cmb, cam);
+            gs.RadixSortPoints(cmb, cam, false);
             cmb.EndSample(s_ProfRadixSort);
             
             // TileRender
             cmb.BeginSample(s_ProfDraw);
-            gs.SingleRenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture);
+            gs.RenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture, false);
             cmb.EndSample(s_ProfDraw);
         }
 
