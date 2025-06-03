@@ -48,6 +48,7 @@ namespace GaussianSplatting.Runtime
             {
                 internal UniversalCameraData CameraData;
                 internal Material BlitMaterial;
+                internal float2 ScreenScale;
                 internal TextureHandle SourceTexture;
                 internal TextureHandle SourceDepth;
                 internal TextureHandle GaussianSplatRT;
@@ -55,7 +56,6 @@ namespace GaussianSplatting.Runtime
                 internal TextureHandle CurrentGaussianSplatDepth;
                 internal Matrix4x4 PreLeftViewProjectionMatrix;
                 internal Matrix4x4 PreRightViewProjectionMatrix;
-                
             }
             
 
@@ -105,6 +105,8 @@ namespace GaussianSplatting.Runtime
                 
                 passData.CameraData = cameraData;
                 passData.BlitMaterial = blitMaterial;
+                passData.ScreenScale = new float2(NewGaussianSplatRenderSystem.instance.GetWidthScale(),
+                    NewGaussianSplatRenderSystem.instance.GetHeightScale());
                 passData.SourceTexture = resourceData.activeColorTexture;
                 passData.SourceDepth = resourceData.activeDepthTexture;
                 passData.GaussianSplatRT = textureHandle;
@@ -178,7 +180,7 @@ namespace GaussianSplatting.Runtime
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.CurrentGaussianSplatDepth, data.BlitMaterial, 0);
+                    BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.CurrentGaussianSplatDepth, data.BlitMaterial, 0, data.ScreenScale);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -190,17 +192,19 @@ namespace GaussianSplatting.Runtime
             }
             
             static MaterialPropertyBlock s_PropertyBlock = new MaterialPropertyBlock();
-            public static readonly int _BlitTexture = Shader.PropertyToID("_BlitTexture");
-            public static readonly int _BlitScaleBias = Shader.PropertyToID("_BlitScaleBias");
-            public static readonly int _BlitDepth = Shader.PropertyToID("_BlitDepth");
-            private static void BlitCameraTexture(CommandBuffer cmd, RTHandle source, RTHandle destination, RTHandle depth, Material material, int pass)
+            public static readonly int BlitTexture = Shader.PropertyToID("_BlitTexture");
+            public static readonly int BlitScaleBias = Shader.PropertyToID("_BlitScaleBias");
+            public static readonly int BlitDepth = Shader.PropertyToID("_BlitDepth");
+            public static readonly int ScreenScale = Shader.PropertyToID("_ScreenScale");
+            private static void BlitCameraTexture(CommandBuffer cmd, RTHandle source, RTHandle destination, RTHandle depth, Material material, int pass, float2 screen_scale)
             {
                 Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
                 // Will set the correct camera viewport as well.
                 CoreUtils.SetRenderTarget(cmd, destination);
-                s_PropertyBlock.SetVector(_BlitScaleBias, viewportScale);
-                s_PropertyBlock.SetTexture(_BlitTexture, source);
-                s_PropertyBlock.SetTexture(_BlitDepth, depth);
+                s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
+                s_PropertyBlock.SetTexture(BlitTexture, source);
+                s_PropertyBlock.SetTexture(BlitDepth, depth);
+                s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
                 cmd.DrawProcedural(Matrix4x4.identity, material, pass, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
                 s_PropertyBlock.Clear();
             }
