@@ -268,7 +268,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     float preRightDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, right_uv, 0);
-    if ((preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) || (preRightDepth > 0.0 && centerRightClipPos.w - preRightDepth > _DepthCullingThreshold)) return;
+    if ((preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) && (preRightDepth > 0.0 && centerRightClipPos.w - preRightDepth > _DepthCullingThreshold)) return;
     #elif defined(SINGLE_PASS_SINGLE)
     float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
     float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset), 0);
