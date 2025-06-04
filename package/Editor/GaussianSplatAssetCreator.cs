@@ -1099,7 +1099,7 @@ namespace GaussianSplatting.Editor
                     axisX = axisx,
                     axisY = axisy,
                     axisZ = axisz,
-                    fov = 25 //@TODO
+                    fov = (float)(Math.Atan2(jsonCam.height * 0.5, jsonCam.fy) * 360 / Math.PI),
                 };
                 result[camIndex] = cam;
             }

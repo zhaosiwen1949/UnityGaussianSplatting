@@ -70,6 +70,8 @@ namespace GaussianSplatting.Runtime
         public bool m_SHOnly;
         [Range(1,30)] [Tooltip("Sort splats only every N frames")]
         public int m_SortNthFrame = 1;
+        [Min(0)][Tooltip("Camera Index")]
+        public int m_CameraIndex = 0;
 
         [Range(1, 10)] public int m_TileScale = 2;
         [Range(0.5f, 1.0f)] public float m_WidthScale = 0.75f;
@@ -777,6 +779,20 @@ namespace GaussianSplatting.Runtime
                 {
                     Debug.LogError($"{nameof(GaussianSplatRenderer)} component is not set up correctly (Resource references are missing), or platform does not support compute shaders");
                 }
+            }
+            
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                var cam = m_Asset.cameras[m_CameraIndex];
+                var selfTr = transform;
+                selfTr.localScale = new Vector3(-1.0f, 1.0f, 1.0f);
+                var camTr = Camera.main.transform;
+                var prevParent = camTr.parent;
+                Camera.main.transform.parent = selfTr;
+                Camera.main.transform.localPosition = cam.pos;
+                Camera.main.transform.localRotation = Quaternion.LookRotation(-1 * cam.axisZ, cam.axisY);
+                Camera.main.transform.parent = prevParent;
+                Camera.main.fieldOfView = cam.fov;
             }
         }
     }
