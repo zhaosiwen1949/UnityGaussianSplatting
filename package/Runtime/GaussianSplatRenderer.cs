@@ -666,14 +666,16 @@ namespace GaussianSplatting.Runtime
                 return;
 
             var selfTr = transform;
+            selfTr.localScale = new Vector3(-1.0f, 1.0f, 1.0f);
             var camTr = mainCam.transform;
             var prevParent = camTr.parent;
             var cam = m_Asset.cameras[index];
             camTr.parent = selfTr;
             camTr.localPosition = cam.pos;
-            camTr.localRotation = Quaternion.LookRotation(cam.axisZ, cam.axisY);
+            camTr.localRotation = Quaternion.LookRotation(-1 * cam.axisZ, cam.axisY);
             camTr.parent = prevParent;
             camTr.localScale = Vector3.one;
+            Camera.main.fieldOfView = cam.fov;
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(camTr);
 #endif

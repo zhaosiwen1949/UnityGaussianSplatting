@@ -784,16 +784,35 @@ namespace GaussianSplatting.Runtime
             if (Input.GetKeyDown(KeyCode.Space))
             {
                 var cam = m_Asset.cameras[m_CameraIndex];
-                var selfTr = transform;
-                selfTr.localScale = new Vector3(-1.0f, 1.0f, 1.0f);
-                var camTr = Camera.main.transform;
-                var prevParent = camTr.parent;
-                Camera.main.transform.parent = selfTr;
-                Camera.main.transform.localPosition = cam.pos;
-                Camera.main.transform.localRotation = Quaternion.LookRotation(-1 * cam.axisZ, cam.axisY);
-                Camera.main.transform.parent = prevParent;
-                Camera.main.fieldOfView = cam.fov;
+                UpdateCamera(cam);
             }
+            
+            if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                m_CameraIndex = Math.Min(m_Asset.cameras.Length - 1, m_CameraIndex + 1);
+                var cam = m_Asset.cameras[m_CameraIndex];
+                UpdateCamera(cam);
+            }
+            
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                m_CameraIndex = Math.Max(0, m_CameraIndex - 1);
+                var cam = m_Asset.cameras[m_CameraIndex];
+                UpdateCamera(cam);
+            }
+        }
+
+        private void UpdateCamera(GaussianSplatAsset.CameraInfo cam)
+        {
+            var selfTr = transform;
+            selfTr.localScale = new Vector3(-1.0f, 1.0f, 1.0f);
+            var camTr = Camera.main.transform;
+            var prevParent = camTr.parent;
+            Camera.main.transform.parent = selfTr;
+            Camera.main.transform.localPosition = cam.pos;
+            Camera.main.transform.localRotation = Quaternion.LookRotation(-1 * cam.axisZ, cam.axisY);
+            Camera.main.transform.parent = prevParent;
+            Camera.main.fieldOfView = cam.fov;
         }
     }
 }
