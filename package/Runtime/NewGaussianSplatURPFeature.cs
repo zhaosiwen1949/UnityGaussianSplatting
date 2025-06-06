@@ -27,6 +27,7 @@ namespace GaussianSplatting.Runtime
         class NewGSRenderPass : ScriptableRenderPass
         {
             const string GaussianSplatRTName = "_GaussianSplatRT";
+            const string BlitRTName = "_BlitRT";
             const string CurrentGaussianSplatDepthName = "_CurrentGaussianSplatDepth";
             const string PreGaussianSplatDepthName = "_PreGaussianSplatDepth";
 
@@ -49,9 +50,11 @@ namespace GaussianSplatting.Runtime
                 internal UniversalCameraData CameraData;
                 internal Material BlitMaterial;
                 internal float2 ScreenScale;
+                internal float Sharpness;
                 internal TextureHandle SourceTexture;
                 internal TextureHandle SourceDepth;
                 internal TextureHandle GaussianSplatRT;
+                internal TextureHandle BlitRT;
                 internal TextureHandle PreGaussianSplatDepth;
                 internal TextureHandle CurrentGaussianSplatDepth;
                 internal Matrix4x4 PreLeftViewProjectionMatrix;
@@ -76,6 +79,13 @@ namespace GaussianSplatting.Runtime
                 rtDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
                 rtDesc.enableRandomWrite = true;
                 var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, true);
+                
+                RenderTextureDescriptor blitRTDesc = cameraData.cameraTargetDescriptor;
+                blitRTDesc.depthBufferBits = 0;
+                blitRTDesc.msaaSamples = 1;
+                blitRTDesc.autoGenerateMips = false;
+                blitRTDesc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat;
+                var blitTextureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, blitRTDesc, BlitRTName, true);
                 
                 // 初始化创建 PreDepthTexture 和 CurrentDepthTexture
                 if (m_preDepthTexture == null || m_currentDepthTexture == null || depthStereoRenderingMode != XRSettings.stereoRenderingMode)
@@ -107,9 +117,11 @@ namespace GaussianSplatting.Runtime
                 passData.BlitMaterial = blitMaterial;
                 passData.ScreenScale = new float2(NewGaussianSplatRenderSystem.instance.GetWidthScale(),
                     NewGaussianSplatRenderSystem.instance.GetHeightScale());
+                passData.Sharpness = NewGaussianSplatRenderSystem.instance.GetSharpness();
                 passData.SourceTexture = resourceData.activeColorTexture;
                 passData.SourceDepth = resourceData.activeDepthTexture;
                 passData.GaussianSplatRT = textureHandle;
+                passData.BlitRT = blitTextureHandle;
                 passData.PreGaussianSplatDepth = preDepthTextureHandle;
                 passData.CurrentGaussianSplatDepth = currentDepthTextureHandle;
                 if (XRSettings.stereoRenderingMode == XRSettings.StereoRenderingMode.SinglePassInstanced)
@@ -148,6 +160,7 @@ namespace GaussianSplatting.Runtime
                 builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
                 builder.UseTexture(resourceData.activeDepthTexture);
                 builder.UseTexture(textureHandle, AccessFlags.Write);
+                builder.UseTexture(blitTextureHandle, AccessFlags.Write);
                 builder.UseTexture(preDepthTextureHandle);
                 builder.UseTexture(currentDepthTextureHandle, AccessFlags.Write);
                 
@@ -180,7 +193,14 @@ namespace GaussianSplatting.Runtime
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    BlitCameraTexture(commandBuffer, data.GaussianSplatRT, data.SourceTexture, data.CurrentGaussianSplatDepth, data.BlitMaterial, 0, data.ScreenScale);
+                    BlitCameraTexture(commandBuffer, 
+                        data.GaussianSplatRT, 
+                        data.SourceTexture, 
+                        data.CurrentGaussianSplatDepth,
+                        data.BlitRT,
+                        data.BlitMaterial, 
+                        data.ScreenScale,
+                        data.Sharpness);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -196,16 +216,50 @@ namespace GaussianSplatting.Runtime
             public static readonly int BlitScaleBias = Shader.PropertyToID("_BlitScaleBias");
             public static readonly int BlitDepth = Shader.PropertyToID("_BlitDepth");
             public static readonly int ScreenScale = Shader.PropertyToID("_ScreenScale");
-            private static void BlitCameraTexture(CommandBuffer cmd, RTHandle source, RTHandle destination, RTHandle depth, Material material, int pass, float2 screen_scale)
+            public static readonly int _SourceSize = Shader.PropertyToID("_SourceSize");
+            private static void BlitCameraTexture(
+                CommandBuffer cmd,
+                RTHandle source,
+                RTHandle destination,
+                RTHandle depth,
+                RTHandle blitRT,
+                Material material,
+                float2 screen_scale,
+                float sharpness)
             {
                 Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
                 // Will set the correct camera viewport as well.
-                CoreUtils.SetRenderTarget(cmd, destination);
+                CoreUtils.SetRenderTarget(cmd, blitRT);
                 s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
                 s_PropertyBlock.SetTexture(BlitTexture, source);
                 s_PropertyBlock.SetTexture(BlitDepth, depth);
                 s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
-                cmd.DrawProcedural(Matrix4x4.identity, material, pass, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                
+                // EASU
+                var fsrInputSize = new Vector2(source.referenceSize.x, source.referenceSize.y);
+                var fsrOutputSize = new Vector2(blitRT.referenceSize.x, blitRT.referenceSize.y);
+                FSRUtils.SetEasuConstants(cmd, fsrInputSize, fsrInputSize, fsrOutputSize);
+                
+                cmd.DrawProcedural(Matrix4x4.identity, material, 1, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                
+                // RCAS
+                Vector2 blitViewportScale = blitRT.useScaling ? new Vector2(blitRT.rtHandleProperties.rtHandleScale.x, blitRT.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                CoreUtils.SetRenderTarget(cmd, destination);
+                s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
+                s_PropertyBlock.SetTexture(BlitTexture, blitRT);
+                float width = blitRT.rt.width;
+                float height = blitRT.rt.height;
+                if (blitRT.rt.useDynamicScale)
+                {
+                    width *= ScalableBufferManager.widthScaleFactor;
+                    height *= ScalableBufferManager.heightScaleFactor;
+                }
+                cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
+                FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
+                material.EnableKeyword("FSR_RCAS_DENOISE");
+                
+                cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                
                 s_PropertyBlock.Clear();
             }
         }

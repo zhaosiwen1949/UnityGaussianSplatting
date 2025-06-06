@@ -78,6 +78,7 @@ namespace GaussianSplatting.Runtime
         [Range(0.5f, 1.0f)] public float m_HeightScale = 0.75f;
         [Range(0.1f, 1.0f)] public float m_TextureScale = 0.5f;
         [Range(0.05f, 1.0f)] public float m_DepthCullingThreshold = 0.4f;
+        [Range(0.0f, 1.0f)] public float m_Sharpness = 0.92f;
         
 
         public GaussianCutout[] m_Cutouts;

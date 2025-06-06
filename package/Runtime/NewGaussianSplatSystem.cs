@@ -199,5 +199,14 @@ namespace GaussianSplatting.Runtime
             var gs = kvp.Item1;
             return gs.m_HeightScale;
         }
+        
+        public float GetSharpness()
+        {
+            if (m_ActiveSplats.Count <= 0) return 1.0f;
+            
+            var kvp = m_ActiveSplats[0];
+            var gs = kvp.Item1;
+            return gs.m_Sharpness;
+        }
     }
 }

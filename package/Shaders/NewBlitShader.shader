@@ -1,16 +1,49 @@
 Shader "Hidden/New Gaussian Splatting/NewBlitShader"
 {
     HLSLINCLUDE
-        #pragma target 2.0
+        #pragma target 4.5
         #pragma editor_sync_compilation
+        // 
+        #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+        #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
         // Core.hlsl for XR dependencies
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+        #include "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/Common.hlsl"
         #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
          // Color.hlsl for color space conversion
         #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 
         TEXTURE2D_X(_BlitDepth);
-        uniform float4 _ScreenScale;
+        float4 _ScreenScale;
+        float4 _SourceSize;
+
+        #define FSR_INPUT_TEXTURE _BlitTexture
+        #define FSR_INPUT_SAMPLER sampler_LinearClamp
+
+        #include "Packages/com.unity.render-pipelines.core/Runtime/PostProcessing/Shaders/FSRCommon.hlsl"
+
+        half4 FragEASU(Varyings input) : SV_Target
+        {
+            UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
+            float2 uv = UnityStereoTransformScreenSpaceTex(input.texcoord);
+            uint2 integerUv = uv * _ScreenParams.xy;
+
+            half3 color = ApplyEASU(integerUv);
+
+            return half4(color, 1.0);
+        }
+
+        half4 FragRCAS(Varyings input) : SV_Target
+        {
+            UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
+            float2 uv = UnityStereoTransformScreenSpaceTex(input.texcoord);
+            int2 positionSS  = uv * _SourceSize.xy;
+
+            return half4(ApplyRCAS(positionSS), 1.0);
+            // return half4(1.0, 0.0, 0.0, 1.0);
+        }
         
         float4 FragCustomBlit(Varyings input): SV_Target
         {
@@ -52,20 +85,43 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
 
             // return float4(SAMPLE_TEXTURE2D_X_LOD(_BlitDepth, sampler_LinearClamp, uv, 0)/10.0);
         }
+        
     ENDHLSL
     
     SubShader
     {
-        Tags{ "RenderPipeline" = "UniversalPipeline" }
+        Tags{ "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        LOD 100
+        ZWrite Off ZTest Always Blend Off Cull Off
 
         Pass
         {
-            ZWrite Off ZTest Always Blend Off Cull Off
             Name "Bilinear"
             
             HLSLPROGRAM
                 #pragma vertex Vert
                 #pragma fragment FragCustomBlit
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "EASU"
+
+            HLSLPROGRAM
+                #pragma vertex Vert
+                #pragma fragment FragEASU
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "RCAS"
+
+            HLSLPROGRAM
+                #pragma vertex Vert
+                #pragma fragment FragRCAS
+                #pragma multi_compile_local __ FSR_RCAS_DENOISE
             ENDHLSL
         }
     }
