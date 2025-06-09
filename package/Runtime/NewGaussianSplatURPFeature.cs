@@ -65,6 +65,7 @@ namespace GaussianSplatting.Runtime
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
             {
                 using var builder = renderGraph.AddUnsafePass(ProfilerTag, out PassData passData);
+                builder.EnableFoveatedRasterization(true);
 
                 var cameraData = frameData.Get<UniversalCameraData>();
                 var resourceData = frameData.Get<UniversalResourceData>();
@@ -81,6 +82,8 @@ namespace GaussianSplatting.Runtime
                 var textureHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, rtDesc, GaussianSplatRTName, true);
                 
                 RenderTextureDescriptor blitRTDesc = cameraData.cameraTargetDescriptor;
+                rtDesc.width = (int)(rtDesc.width);
+                rtDesc.height = (int)(rtDesc.height);
                 blitRTDesc.depthBufferBits = 0;
                 blitRTDesc.msaaSamples = 1;
                 blitRTDesc.autoGenerateMips = false;
@@ -192,7 +195,7 @@ namespace GaussianSplatting.Runtime
                     // );
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
-                    commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
+                    // commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
                     BlitCameraTexture(commandBuffer, 
                         data.GaussianSplatRT, 
                         data.SourceTexture, 
