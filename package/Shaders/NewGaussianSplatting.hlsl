@@ -10,7 +10,18 @@
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define TEST_ALPHA 0.001
 #define LN2 0.693147180559945
-#define ALPHA_T 16.0f // 表示高斯投影半径，截止在透明度为 1/16 处
+#define ALPHA_T 192.0f // 表示高斯投影半径，截止在透明度为 1/16 处
+
+struct PlaneData 
+{
+    float3 normal;    
+    float distance;   
+    float3 center;    
+    float height;     
+    float width;      
+    float3 heightDir; 
+    float3 widthDir;  
+};
 
 struct GeomData
 {
@@ -28,18 +39,28 @@ inline half3 GammaToLinearSpace (half3 sRGB)
     //return half3(GammaToLinearSpaceExact(sRGB.r), GammaToLinearSpaceExact(sRGB.g), GammaToLinearSpaceExact(sRGB.b));
 }
 
-bool CalcPixel(uint range_id, uint2 global_id,
+// 声明计算中需要使用的 threadgroup memory（也就是 share memory）
+// 如果太大，可以把使用频率低的部分，仍然保存在 global memory 上
+// groupshared int collected_id[BLOCK_SIZE];
+groupshared half collected_depth[BLOCK_SIZE];
+groupshared float2 collected_xy[BLOCK_SIZE];
+groupshared float4 collected_conic_opacity[BLOCK_SIZE];
+groupshared half3 collected_color[BLOCK_SIZE];
+
+bool CalcPixelWithShareMemory(uint range_id, uint2 global_id, uint group_index,
     StructuredBuffer<uint2> image_range,
     StructuredBuffer<uint> bin_point_list_value,
     StructuredBuffer<GeomData> geom_data,
     out float T, out half3 color, out float depth, out float last_depth)
 {
     // 计算迭代次数
-    uint2 left_range = image_range[range_id];
+    uint2 range = image_range[range_id];
+
+    
+    int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    int toDo = range.y - range.x;
         
-    int left_toDo = left_range.y - left_range.x;
-        
-    if (left_toDo > 200 * BLOCK_SIZE) return false;
+    if (toDo > 400 * BLOCK_SIZE) return false;
         
     // 累计透明度、颜色和深度图输出
     T = 1.0f;
@@ -50,10 +71,97 @@ bool CalcPixel(uint range_id, uint2 global_id,
     // 遍历 Tile 中保存的高斯数据
     // 每个 thread 负责一个像素，逐像素累计高斯数据
 
-    bool left_done = false;
-    for (int j = 0; !left_done && j < left_toDo; j++)
+    for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
     {
-        int coll_id = bin_point_list_value[left_range.x + j];
+        // 把 global meomry 的数据，加载到 share memory 上
+        int progress = i * BLOCK_SIZE + group_index;
+        if (range.x + progress < range.y)
+        {
+            int coll_id = bin_point_list_value[range.x + progress];
+            // collected_id[group_index] = coll_id;
+            collected_depth[group_index] = f16tof32(geom_data[coll_id].rgb_depth.y);
+            collected_xy[group_index] = geom_data[coll_id].mean2D;
+            collected_conic_opacity[group_index] = geom_data[coll_id].conic_opacity;
+        
+            half3 tmp_color;
+            tmp_color.r = f16tof32(geom_data[coll_id].rgb_depth.x >> 16);
+            tmp_color.g = f16tof32(geom_data[coll_id].rgb_depth.x);
+            tmp_color.b = f16tof32(geom_data[coll_id].rgb_depth.y >> 16);
+            collected_color[group_index] = tmp_color;
+        }
+        GroupMemoryBarrierWithGroupSync();
+        
+        bool done = false;
+        for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+        {
+            // 根据像素到 2D 高斯中心点的距离，计算衰减度
+            float2 xy = collected_xy[j];
+            
+            float2 d = float2(xy.x - (float)global_id.x, xy.y - (float)global_id.y);
+
+            float4 con_o = collected_conic_opacity[j];
+            float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+            // if (power > 0.0f)
+            //     continue;
+
+            // 计算 alpha 透明度
+            float alpha = min(0.99f, con_o.w * exp(power));
+            // if (alpha < 1.0f / 255.0f)
+            //     continue;
+
+            float test_T = T * (1 - alpha);
+            if (test_T < TEST_ALPHA)
+            {
+                done = true;
+                continue;
+            }
+
+            // 累加颜色
+            half3 tmp_color = collected_color[j];
+            color += tmp_color * alpha * T;
+
+            // 纪录截至时的最大深度
+            last_depth = collected_depth[j];
+
+            // 累加深度
+            depth += last_depth * alpha * T;
+            
+            // 更新累积 alpha
+            T = test_T;
+        }
+
+        GroupMemoryBarrierWithGroupSync();
+    }
+    
+    return true;
+}
+
+bool CalcPixel(uint range_id, uint2 global_id,
+    StructuredBuffer<uint2> image_range,
+    StructuredBuffer<uint> bin_point_list_value,
+    StructuredBuffer<GeomData> geom_data,
+    out float T, out half3 color, out float depth, out float last_depth)
+{
+    // 计算迭代次数
+    uint2 range = image_range[range_id];
+        
+    int toDo = range.y - range.x;
+        
+    if (toDo > 400 * BLOCK_SIZE) return false;
+        
+    // 累计透明度、颜色和深度图输出
+    T = 1.0f;
+    color = 0.0f;
+    depth = 0.0f;
+    last_depth = 100.0f;
+
+    // 遍历 Tile 中保存的高斯数据
+    // 每个 thread 负责一个像素，逐像素累计高斯数据
+
+    bool done = false;
+    for (int j = 0; !done && j < toDo; j++)
+    {
+        int coll_id = bin_point_list_value[range.x + j];
         // 根据像素到 2D 高斯中心点的距离，计算衰减度
         float2 xy = geom_data[coll_id].mean2D;
             
@@ -72,7 +180,7 @@ bool CalcPixel(uint range_id, uint2 global_id,
         float test_T = T * (1 - alpha);
         if (test_T < TEST_ALPHA)
         {
-            left_done = true;
+            done = true;
             continue;
         }
 
@@ -311,6 +419,34 @@ bool DuplicateToTilesTouched(
     );
 
     return true;
+}
+
+bool OcclusionCulled(float3 point_pos, float3 camera_pos, StructuredBuffer<PlaneData> plane_list, int plane_num)
+{
+    float3 ray_dir = normalize(point_pos - camera_pos);
+    float ray_length = length(ray_dir);
+
+    for (int i = 0; i < plane_num; i++)
+    {
+        PlaneData plane = plane_list[i];
+
+        // 检测射线是否与平面平行
+        float ray_dot_plane = dot(ray_dir, plane.normal);
+        if (abs(ray_dot_plane) < 1e-6) continue;
+
+        // 计算交点
+        float t = (plane.distance - dot(camera_pos, plane.normal)) / ray_dot_plane;
+        if (t <=0 || t >= ray_length) continue;
+
+        float3 cross_point = camera_pos + ray_dir * t;
+        float3 local_cross_point = cross_point - plane.center;
+        float u = dot(local_cross_point, plane.widthDir);
+        float v = dot(local_cross_point, plane.heightDir);
+
+        if (abs(u) <= plane.width * 0.5 && abs(v) <= plane.height * 0.5) return true;
+    }
+
+    return false;
 }
 
 bool InFrustum(float4 clipPos, float2 clipScale)

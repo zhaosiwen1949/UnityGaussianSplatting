@@ -209,9 +209,11 @@ Texture2DArray<float> _GSPreDepthTexture;
 Texture2D<float> _GSPreDepthTexture;
 #endif
 
+StructuredBuffer<PlaneData> _RO_PlaneData;
+int _NumOcclusionPlane;
+
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
-// void CSPreProcessViewData (uint3 id : SV_DispatchThreadID, uint3 group_id : SV_GroupID, uint3 thread_id : SV_GroupThreadID)
 {
     uint idx = SwizzleDispatchThreadId(id);
     
@@ -245,6 +247,8 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 position = LoadSplatPosValue(idx);
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerLeftClipPos = mul(vp_left_matrix, float4(centerWorldPos, 1));
+
+    if (OcclusionCulled(centerWorldPos, _VecWorldSpaceCameraPos.xyz, _RO_PlaneData, _NumOcclusionPlane)) return;
     
     #if defined(SINGLE_PASS_STEREO)
     float4 centerRightClipPos = mul(vp_right_matrix, float4(centerWorldPos, 1));
@@ -537,7 +541,7 @@ RWTexture2D<float> _GSDepthTexture;
 #endif
 
 [numthreads(BLOCK_X, BLOCK_Y, 1)]
-void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID)
+void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : SV_GroupID, uint group_index : SV_GroupIndex)
 {
     float W = _VecScreenParams.x * _VecScreenParams.z;
     float H = _VecScreenParams.y * _VecScreenParams.w;
@@ -554,6 +558,9 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         half3 left_color;
         CalcPixel(group_id.y * horizontal_blocks + group_id.x, global_id.xy, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
             left_T, left_color, left_depth, left_last_depth);
+
+        // CalcPixelWithShareMemory(group_id.y * horizontal_blocks + group_id.x, global_id.xy, group_index, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
+        //     left_T, left_color, left_depth, left_last_depth);
 
         #if defined(SINGLE_PASS_STEREO)
         float right_T, right_depth, right_last_depth;

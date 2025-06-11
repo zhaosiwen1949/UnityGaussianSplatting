@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 using System;
+using System.Collections.Generic;
 using GPUInt64Sorting.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
@@ -50,7 +51,18 @@ namespace GaussianSplatting.Runtime
             }
         }
     }
-    
+
+    struct PlaneData
+    {
+        public Vector3 normal;
+        public float distance;
+        public Vector3 center;
+        public float height;
+        public float width;
+        public Vector3 heightDir;
+        public Vector3 widthDir;
+    }
+
     [ExecuteInEditMode]
     public class NewGaussianSplatRenderer : MonoBehaviour
     {
@@ -72,6 +84,7 @@ namespace GaussianSplatting.Runtime
         public int m_SortNthFrame = 1;
         [Min(0)][Tooltip("Camera Index")]
         public int m_CameraIndex = 0;
+        [Tooltip("Occlusion Plane list")] public GameObject[] m_OcclusionPlanes;
 
         [Range(1, 10)] public int m_TileScale = 2;
         [Range(0.5f, 1.0f)] public float m_WidthScale = 0.75f;
@@ -98,6 +111,9 @@ namespace GaussianSplatting.Runtime
         internal bool m_GpuChunksValid;
         
         // new tile-renderer needed buffer
+        // OcclusionCullingPlane
+        internal GraphicsBuffer m_PlaneDataBuffer;
+        
         // VisibleCounts
         internal GraphicsBuffer m_NumArgs_left;
         internal GraphicsBuffer m_NumArgs_right;
@@ -128,6 +144,8 @@ namespace GaussianSplatting.Runtime
         private GraphicsBuffer m_AltPayload_right;
         private GraphicsBuffer m_GlobalHist_right;
         private GraphicsBuffer m_PassHist_right;
+
+        private PlaneData[] m_planeDataList = new PlaneData[10];
         
         // Shader Keyword
         private LocalKeyword m_SinglePassStereoKeyWord;
@@ -170,6 +188,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int ImageRightRange = Shader.PropertyToID("_ImageRightRange");
             public static readonly int ImageRange = Shader.PropertyToID("_ImageRange");
             
+            public static readonly int RO_PlaneData = Shader.PropertyToID("_RO_PlaneData");
             public static readonly int RO_NumArgs = Shader.PropertyToID("_RO_NumArgs");
             public static readonly int RO_GeomLeftData = Shader.PropertyToID("_RO_GeomLeftData");
             public static readonly int RO_GeomRightData = Shader.PropertyToID("_RO_GeomRightData");
@@ -179,6 +198,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int RO_BinLeftPointListValue = Shader.PropertyToID("_RO_BinLeftPointListValue");
             public static readonly int RO_BinRightPointListValue = Shader.PropertyToID("_RO_BinRightPointListValue");
             
+            public static readonly int NumOcclusionPlane = Shader.PropertyToID("_NumOcclusionPlane");
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
             public static readonly int TileScale = Shader.PropertyToID("_TileScale");
             public static readonly int DepthCullingThreshold = Shader.PropertyToID("_DepthCullingThreshold");
@@ -253,7 +273,7 @@ namespace GaussianSplatting.Runtime
             m_SinglePassSingleKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS_SINGLE");
 
             m_SplatCount = asset.splatCount;
-            m_TileRenderCount = asset.splatCount;
+            m_TileRenderCount = 5 * asset.splatCount;
             m_GpuPosData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.posData.dataSize / 4), 4) { name = "GaussianPosData" };
             m_GpuPosData.SetData(asset.posData.GetData<uint>());
             m_GpuOtherData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.otherData.dataSize / 4), 4) { name = "GaussianOtherData" };
@@ -281,6 +301,9 @@ namespace GaussianSplatting.Runtime
                     UnsafeUtility.SizeOf<GaussianSplatAsset.ChunkInfo>()) {name = "GaussianChunkData"};
                 m_GpuChunksValid = false;
             }
+            
+            m_PlaneDataBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, m_planeDataList.Length, UnsafeUtility.SizeOf<PlaneData>());
+            UpdateOcclusionPlane();
             
             // 初始化 NumArgs
             m_NumArgs_left = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 8, 4) {name = "NumArgsLeft"};
@@ -430,6 +453,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GlobalHist_right);
             DisposeBuffer(ref m_PassHist_right);
             
+            DisposeBuffer(ref m_PlaneDataBuffer);
             DisposeBuffer(ref m_NumArgs_left);
             DisposeBuffer(ref m_NumArgs_right);
             DisposeBuffer(ref m_GeomState_left_data);
@@ -520,6 +544,37 @@ namespace GaussianSplatting.Runtime
                 countY = 1;
             }
         }
+
+        void UpdateOcclusionPlane()
+        {
+            // 更新 Occlusion Culling Plane
+            for (int i = 0; i < m_OcclusionPlanes.Length; i++)
+            {
+                GameObject plane = m_OcclusionPlanes[i];
+                Transform planeTransform = plane.transform;
+                
+                // 关闭 plane 的渲染
+                // plane.GetComponent<MeshRenderer>().enabled = false;
+                
+                Vector3 planeNormal = planeTransform.up;
+                Vector3 planeHeightDirection = planeTransform.forward;
+                Vector3 planeWidthDirection = Vector3.Cross(planeNormal, planeHeightDirection);
+
+                var planeData = new PlaneData()
+                {
+                    normal = planeNormal,
+                    distance = Vector3.Dot(planeNormal, planeTransform.position),
+                    center = planeTransform.position,
+                    height = planeTransform.localScale.z * 10.0f,
+                    width = planeTransform.localScale.x * 10.0f,
+                    heightDir = planeHeightDirection,
+                    widthDir = planeWidthDirection,
+                };
+                
+                m_planeDataList[i] = planeData;
+            }
+            m_PlaneDataBuffer.SetData(m_planeDataList);
+        }
         
         internal void PreProcessViewData(CommandBuffer cmb, Camera cam, TextureHandle depthTexture, Matrix4x4 preLeftViewProjectionMatrix, Matrix4x4 preRightViewProjectionMatrix, bool isStereo)
         {
@@ -545,6 +600,11 @@ namespace GaussianSplatting.Runtime
                 cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs,Props.RightNumArgs, m_NumArgs_right);
             }
             cmb.DispatchCompute(m_CSSplatUtilities, (int)KernelIndices.InitNumArgs, 1, 1, 1);
+
+            UpdateOcclusionPlane();
+            cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData, Props.RO_PlaneData, m_PlaneDataBuffer);
+            cmb.SetComputeIntParam(m_CSSplatUtilities, Props.NumOcclusionPlane, m_planeDataList.Length);
+            
             // 设置 NumArgs
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,Props.LeftNumArgs, m_NumArgs_left);
             if (m_IsSinglePass && isStereo)
