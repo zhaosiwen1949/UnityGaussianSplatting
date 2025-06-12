@@ -58,9 +58,7 @@ bool CalcPixelWithShareMemory(uint range_id, uint2 global_id, uint group_index,
 
     
     int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    int toDo = range.y - range.x;
-        
-    if (toDo > 400 * BLOCK_SIZE) return false;
+    int toDo = min(range.y - range.x, 400 * BLOCK_SIZE);
         
     // 累计透明度、颜色和深度图输出
     T = 1.0f;
@@ -423,7 +421,7 @@ bool DuplicateToTilesTouched(
 
 bool OcclusionCulled(float3 point_pos, float3 camera_pos, StructuredBuffer<PlaneData> plane_list, int plane_num)
 {
-    float3 ray_dir = normalize(point_pos - camera_pos);
+    float3 ray_dir = normalize(camera_pos - point_pos);
     float ray_length = length(ray_dir);
 
     for (int i = 0; i < plane_num; i++)
@@ -435,7 +433,7 @@ bool OcclusionCulled(float3 point_pos, float3 camera_pos, StructuredBuffer<Plane
         if (abs(ray_dot_plane) < 1e-6) continue;
 
         // 计算交点
-        float t = (plane.distance - dot(camera_pos, plane.normal)) / ray_dot_plane;
+        float t = (plane.distance - dot(point_pos, plane.normal)) / ray_dot_plane;
         if (t <=0 || t >= ray_length) continue;
 
         float3 cross_point = camera_pos + ray_dir * t;
