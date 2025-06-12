@@ -99,13 +99,13 @@ bool CalcPixelWithShareMemory(uint range_id, uint2 global_id, uint group_index,
 
             float4 con_o = collected_conic_opacity[j];
             float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-            // if (power > 0.0f)
-            //     continue;
+            if (power > 0.0f)
+                continue;
 
             // 计算 alpha 透明度
             float alpha = min(0.99f, con_o.w * exp(power));
-            // if (alpha < 1.0f / 255.0f)
-            //     continue;
+            if (alpha < 1.0f / 255.0f)
+                continue;
 
             float test_T = T * (1 - alpha);
             if (test_T < TEST_ALPHA)
@@ -143,9 +143,7 @@ bool CalcPixel(uint range_id, uint2 global_id,
     // 计算迭代次数
     uint2 range = image_range[range_id];
         
-    int toDo = range.y - range.x;
-        
-    if (toDo > 400 * BLOCK_SIZE) return false;
+    int toDo = min(range.y - range.x, 400 * BLOCK_SIZE);
         
     // 累计透明度、颜色和深度图输出
     T = 1.0f;
@@ -167,13 +165,13 @@ bool CalcPixel(uint range_id, uint2 global_id,
 
         float4 con_o = geom_data[coll_id].conic_opacity;
         float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-        // if (power > 0.0f)
-        //     continue;
+        if (power > 0.0f)
+            continue;
 
         // 计算 alpha 透明度
         float alpha = min(0.99f, con_o.w * exp(power));
-        // if (alpha < 1.0f / 255.0f)
-        //     continue;
+        if (alpha < 1.0f / 255.0f)
+            continue;
 
         float test_T = T * (1 - alpha);
         if (test_T < TEST_ALPHA)
