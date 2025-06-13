@@ -39,10 +39,23 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
             UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
             float2 uv = UnityStereoTransformScreenSpaceTex(input.texcoord);
-            int2 positionSS  = uv * _SourceSize.xy;
+            float2 offset = (1.0 - _ScreenScale) * 0.5;
+            float2 down_limit = offset + _BlitTexture_TexelSize.xy;
+            float2 up_limit = 1.0 - offset - _BlitTexture_TexelSize.xy;
 
-            return half4(ApplyRCAS(positionSS), 1.0);
-            // return half4(1.0, 0.0, 0.0, 1.0);
+            half4 color = 0.0;
+            if (uv.x <= down_limit.x || uv.y <= down_limit.y || uv.x >= up_limit.x || uv.y >= up_limit.y)
+            {
+                uv = clamp(uv, down_limit, up_limit);
+                color = SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, uv, _BlitMipLevel);
+            }
+            else
+            {
+                int2 positionSS  = uv * _SourceSize.xy;
+                color = half4(ApplyRCAS(positionSS), 1.0);
+            }
+
+            return color;
         }
         
         float4 FragCustomBlit(Varyings input): SV_Target

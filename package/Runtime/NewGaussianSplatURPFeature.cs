@@ -244,32 +244,35 @@ namespace GaussianSplatting.Runtime
                 // FSRUtils.SetEasuConstants(cmd, fsrInputSize, fsrInputSize, fsrOutputSize);
                 //
                 // cmd.DrawProcedural(Matrix4x4.identity, material, 1, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
-                //
-                // // RCAS
+                
+                // RCAS
                 // Vector2 blitViewportScale = blitRT.useScaling ? new Vector2(blitRT.rtHandleProperties.rtHandleScale.x, blitRT.rtHandleProperties.rtHandleScale.y) : Vector2.one;
-                // CoreUtils.SetRenderTarget(cmd, destination);
-                // s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
+                Vector2 blitViewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                CoreUtils.SetRenderTarget(cmd, destination);
+                s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
+                s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
                 // s_PropertyBlock.SetTexture(BlitTexture, blitRT);
-                // float width = blitRT.rt.width;
-                // float height = blitRT.rt.height;
-                // if (blitRT.rt.useDynamicScale)
-                // {
-                //     width *= ScalableBufferManager.widthScaleFactor;
-                //     height *= ScalableBufferManager.heightScaleFactor;
-                // }
-                // cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
-                // FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
-                // material.EnableKeyword("FSR_RCAS_DENOISE");
-                //
-                // cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                s_PropertyBlock.SetTexture(BlitTexture, source);
+                float width = blitRT.rt.width;
+                float height = blitRT.rt.height;
+                if (blitRT.rt.useDynamicScale)
+                {
+                    width *= ScalableBufferManager.widthScaleFactor;
+                    height *= ScalableBufferManager.heightScaleFactor;
+                }
+                cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
+                FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
+                material.EnableKeyword("FSR_RCAS_DENOISE");
+                
+                cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
                 
                 // Blit Clamp
-                CoreUtils.SetRenderTarget(cmd, destination);
-                Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
-                s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
-                s_PropertyBlock.SetTexture(BlitTexture, source);
-                s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
-                cmd.DrawProcedural(Matrix4x4.identity, material, 0, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                // CoreUtils.SetRenderTarget(cmd, destination);
+                // Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                // s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
+                // s_PropertyBlock.SetTexture(BlitTexture, source);
+                // s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
+                // cmd.DrawProcedural(Matrix4x4.identity, material, 0, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
                 
                 s_PropertyBlock.Clear();
             }
