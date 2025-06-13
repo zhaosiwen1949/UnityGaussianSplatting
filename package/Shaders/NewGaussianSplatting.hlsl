@@ -68,8 +68,8 @@ bool CalcPixelWithShareMemory(uint range_id, uint2 global_id, uint group_index,
 
     // 遍历 Tile 中保存的高斯数据
     // 每个 thread 负责一个像素，逐像素累计高斯数据
-
-    for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+    bool done = false;
+    for (int i = 0; !done && i < rounds; i++, toDo -= BLOCK_SIZE)
     {
         // 把 global meomry 的数据，加载到 share memory 上
         int progress = i * BLOCK_SIZE + group_index;
@@ -89,7 +89,6 @@ bool CalcPixelWithShareMemory(uint range_id, uint2 global_id, uint group_index,
         }
         GroupMemoryBarrierWithGroupSync();
         
-        bool done = false;
         for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
         {
             // 根据像素到 2D 高斯中心点的距离，计算衰减度

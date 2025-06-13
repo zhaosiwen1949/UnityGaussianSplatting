@@ -556,11 +556,11 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         // 累计透明度、颜色和深度图输出
         float left_T, left_depth, left_last_depth;
         half3 left_color;
-        CalcPixel(group_id.y * horizontal_blocks + group_id.x, global_id.xy, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
-            left_T, left_color, left_depth, left_last_depth);
-
-        // CalcPixelWithShareMemory(group_id.y * horizontal_blocks + group_id.x, global_id.xy, group_index, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
+        // CalcPixel(group_id.y * horizontal_blocks + group_id.x, global_id.xy, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
         //     left_T, left_color, left_depth, left_last_depth);
+
+        CalcPixelWithShareMemory(group_id.y * horizontal_blocks + group_id.x, global_id.xy, group_index, _RO_ImageLeftRange, _RO_BinLeftPointListValue, _RO_GeomLeftData,
+            left_T, left_color, left_depth, left_last_depth);
 
         #if defined(SINGLE_PASS_STEREO)
         float right_T, right_depth, right_last_depth;
