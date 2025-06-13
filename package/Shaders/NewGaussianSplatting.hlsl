@@ -420,7 +420,7 @@ bool DuplicateToTilesTouched(
 bool OcclusionCulled(float3 point_pos, float3 camera_pos, StructuredBuffer<PlaneData> plane_list, int plane_num)
 {
     float3 ray_dir = normalize(camera_pos - point_pos);
-    float ray_length = length(ray_dir);
+    float ray_length = length(camera_pos - point_pos);
 
     for (int i = 0; i < plane_num; i++)
     {
