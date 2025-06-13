@@ -230,38 +230,46 @@ namespace GaussianSplatting.Runtime
                 float2 screen_scale,
                 float sharpness)
             {
+                // Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                // // Will set the correct camera viewport as well.
+                // CoreUtils.SetRenderTarget(cmd, blitRT);
+                // s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
+                // s_PropertyBlock.SetTexture(BlitTexture, source);
+                // s_PropertyBlock.SetTexture(BlitDepth, depth);
+                // s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
+                //
+                // // EASU
+                // var fsrInputSize = new Vector2(source.referenceSize.x, source.referenceSize.y);
+                // var fsrOutputSize = new Vector2(blitRT.referenceSize.x, blitRT.referenceSize.y);
+                // FSRUtils.SetEasuConstants(cmd, fsrInputSize, fsrInputSize, fsrOutputSize);
+                //
+                // cmd.DrawProcedural(Matrix4x4.identity, material, 1, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                //
+                // // RCAS
+                // Vector2 blitViewportScale = blitRT.useScaling ? new Vector2(blitRT.rtHandleProperties.rtHandleScale.x, blitRT.rtHandleProperties.rtHandleScale.y) : Vector2.one;
+                // CoreUtils.SetRenderTarget(cmd, destination);
+                // s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
+                // s_PropertyBlock.SetTexture(BlitTexture, blitRT);
+                // float width = blitRT.rt.width;
+                // float height = blitRT.rt.height;
+                // if (blitRT.rt.useDynamicScale)
+                // {
+                //     width *= ScalableBufferManager.widthScaleFactor;
+                //     height *= ScalableBufferManager.heightScaleFactor;
+                // }
+                // cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
+                // FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
+                // material.EnableKeyword("FSR_RCAS_DENOISE");
+                //
+                // cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                
+                // Blit Clamp
+                CoreUtils.SetRenderTarget(cmd, destination);
                 Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
-                // Will set the correct camera viewport as well.
-                CoreUtils.SetRenderTarget(cmd, blitRT);
                 s_PropertyBlock.SetVector(BlitScaleBias, viewportScale);
                 s_PropertyBlock.SetTexture(BlitTexture, source);
-                s_PropertyBlock.SetTexture(BlitDepth, depth);
                 s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
-                
-                // EASU
-                var fsrInputSize = new Vector2(source.referenceSize.x, source.referenceSize.y);
-                var fsrOutputSize = new Vector2(blitRT.referenceSize.x, blitRT.referenceSize.y);
-                FSRUtils.SetEasuConstants(cmd, fsrInputSize, fsrInputSize, fsrOutputSize);
-                
-                cmd.DrawProcedural(Matrix4x4.identity, material, 1, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
-                
-                // RCAS
-                Vector2 blitViewportScale = blitRT.useScaling ? new Vector2(blitRT.rtHandleProperties.rtHandleScale.x, blitRT.rtHandleProperties.rtHandleScale.y) : Vector2.one;
-                CoreUtils.SetRenderTarget(cmd, destination);
-                s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
-                s_PropertyBlock.SetTexture(BlitTexture, blitRT);
-                float width = blitRT.rt.width;
-                float height = blitRT.rt.height;
-                if (blitRT.rt.useDynamicScale)
-                {
-                    width *= ScalableBufferManager.widthScaleFactor;
-                    height *= ScalableBufferManager.heightScaleFactor;
-                }
-                cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
-                FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
-                material.EnableKeyword("FSR_RCAS_DENOISE");
-                
-                cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
+                cmd.DrawProcedural(Matrix4x4.identity, material, 0, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
                 
                 s_PropertyBlock.Clear();
             }
