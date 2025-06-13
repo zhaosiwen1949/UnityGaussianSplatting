@@ -195,7 +195,7 @@ namespace GaussianSplatting.Runtime
                     // );
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
-                    // commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
+                    commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
                     BlitCameraTexture(commandBuffer, 
                         data.GaussianSplatRT, 
                         data.SourceTexture, 

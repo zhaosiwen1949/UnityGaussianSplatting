@@ -8,9 +8,9 @@
 #define BLOCK_X 8
 #define BLOCK_Y 8
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
-#define TEST_ALPHA 0.001
+#define TEST_ALPHA 0.0003
 #define LN2 0.693147180559945
-#define ALPHA_T 192.0f // 表示高斯投影半径，截止在透明度为 1/16 处
+#define ALPHA_T 96.0f // 表示高斯投影半径，截止在透明度为 1/16 处
 
 struct PlaneData 
 {
