@@ -36,6 +36,7 @@ namespace GaussianSplatting.Runtime
             static readonly int s_gaussianSplatRT = Shader.PropertyToID(GaussianSplatRTName);
             
             public Material blitMaterial { get; set; }
+            public bool ShowDepth;
 
             private float TextureScale = 1.0f;
             private RTHandle m_preDepthTexture;
@@ -51,6 +52,7 @@ namespace GaussianSplatting.Runtime
                 internal Material BlitMaterial;
                 internal float2 ScreenScale;
                 internal float Sharpness;
+                internal bool ShowDepth;
                 internal TextureHandle SourceTexture;
                 internal TextureHandle SourceDepth;
                 internal TextureHandle GaussianSplatRT;
@@ -121,6 +123,7 @@ namespace GaussianSplatting.Runtime
                 passData.ScreenScale = new float2(NewGaussianSplatRenderSystem.instance.GetWidthScale(),
                     NewGaussianSplatRenderSystem.instance.GetHeightScale());
                 passData.Sharpness = NewGaussianSplatRenderSystem.instance.GetSharpness();
+                passData.ShowDepth = ShowDepth;
                 passData.SourceTexture = resourceData.activeColorTexture;
                 passData.SourceDepth = resourceData.activeDepthTexture;
                 passData.GaussianSplatRT = textureHandle;
@@ -203,7 +206,8 @@ namespace GaussianSplatting.Runtime
                         data.BlitRT,
                         data.BlitMaterial, 
                         data.ScreenScale,
-                        data.Sharpness);
+                        data.Sharpness,
+                        data.ShowDepth);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -228,7 +232,8 @@ namespace GaussianSplatting.Runtime
                 RTHandle blitRT,
                 Material material,
                 float2 screen_scale,
-                float sharpness)
+                float sharpness,
+                bool showDepth)
             {
                 // Vector2 viewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
                 // // Will set the correct camera viewport as well.
@@ -253,6 +258,7 @@ namespace GaussianSplatting.Runtime
                 s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
                 // s_PropertyBlock.SetTexture(BlitTexture, blitRT);
                 s_PropertyBlock.SetTexture(BlitTexture, source);
+                s_PropertyBlock.SetTexture(BlitDepth, depth);
                 float width = blitRT.rt.width;
                 float height = blitRT.rt.height;
                 if (blitRT.rt.useDynamicScale)
@@ -262,7 +268,14 @@ namespace GaussianSplatting.Runtime
                 }
                 cmd.SetGlobalVector(_SourceSize, new Vector4(width, height, 1.0f / width, 1.0f / height));
                 FSRUtils.SetRcasConstantsLinear(cmd, sharpness);
-                material.EnableKeyword("FSR_RCAS_DENOISE");
+                if (showDepth)
+                {
+                    material.EnableKeyword("SHOW_DEPTH");
+                }
+                else
+                {
+                    material.EnableKeyword("FSR_RCAS_DENOISE");
+                }
                 
                 cmd.DrawProcedural(Matrix4x4.identity, material, 2, MeshTopology.Triangles, 3, 1, s_PropertyBlock);
                 
@@ -282,13 +295,15 @@ namespace GaussianSplatting.Runtime
         bool m_HasCamera;
         
         public Shader blitShader;
+        public bool showDepth;
 
         public override void Create()
         {
            m_Pass = new NewGSRenderPass
             {
                 renderPassEvent = RenderPassEvent.BeforeRenderingTransparents,
-                blitMaterial = CoreUtils.CreateEngineMaterial(blitShader)
+                blitMaterial = CoreUtils.CreateEngineMaterial(blitShader),
+                ShowDepth = showDepth
             };
         }
 

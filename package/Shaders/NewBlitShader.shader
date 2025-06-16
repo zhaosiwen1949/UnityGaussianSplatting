@@ -16,6 +16,7 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
         TEXTURE2D_X(_BlitDepth);
         float4 _ScreenScale;
         float4 _SourceSize;
+        int _ShowDepth;
 
         #define FSR_INPUT_TEXTURE _BlitTexture
         #define FSR_INPUT_SAMPLER sampler_LinearClamp
@@ -44,6 +45,10 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
             float2 up_limit = 1.0 - offset - _BlitTexture_TexelSize.xy;
 
             half4 color = 0.0;
+            #if defined(SHOW_DEPTH)
+            uv = clamp(uv, down_limit, up_limit);
+            color = half4(SAMPLE_TEXTURE2D_X_LOD(_BlitDepth, sampler_LinearClamp, uv, 0)/10.0);
+            #else
             if (uv.x <= down_limit.x || uv.y <= down_limit.y || uv.x >= up_limit.x || uv.y >= up_limit.y)
             {
                 uv = clamp(uv, down_limit, up_limit);
@@ -54,6 +59,7 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
                 int2 positionSS  = uv * _SourceSize.xy;
                 color = half4(ApplyRCAS(positionSS), 1.0);
             }
+            #endif
 
             return color;
         }
@@ -109,7 +115,7 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
             HLSLPROGRAM
                 #pragma vertex Vert
                 #pragma fragment FragRCAS
-                #pragma multi_compile_local __ FSR_RCAS_DENOISE
+                #pragma multi_compile_local __ FSR_RCAS_DENOISE SHOW_DEPTH
             ENDHLSL
         }
     }
