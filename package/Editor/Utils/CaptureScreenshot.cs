@@ -2,6 +2,7 @@
 
 using UnityEditor;
 using UnityEngine;
+using GaussianSplatting.Runtime;
 
 namespace GaussianSplatting.Editor.Utils
 {
@@ -21,6 +22,12 @@ namespace GaussianSplatting.Editor.Utils
             }
             ScreenCapture.CaptureScreenshot(path);
             Debug.Log($"Captured {path}");
+        }
+
+        [MenuItem("Tools/Gaussian Splats/Debug/Capture Screenshot for camera list %h")]
+        public static void CaptureShotForCameraList()
+        {
+            NewGaussianSplatRenderSystem.instance.CaptureShotForCameraList();
         }
     }
 }

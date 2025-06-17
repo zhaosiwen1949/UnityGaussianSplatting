@@ -15,7 +15,7 @@ using UnityEngine.XR;
 
 namespace GaussianSplatting.Runtime
 {
-    class NewGaussianSplatRenderSystem
+    public class NewGaussianSplatRenderSystem
     {
         // ReSharper disable MemberCanBePrivate.Global - used by HDRP/URP features that are not always compiled
         internal static readonly ProfilerMarker s_ProfDraw = new(ProfilerCategory.Render, "GaussianSplat.Draw", MarkerFlags.SampleGPU);
@@ -171,6 +171,16 @@ namespace GaussianSplatting.Runtime
             cmb.BeginSample(s_ProfDraw);
             gs.RenderViewData(cmb, cam, gsRenderTexture, currentDepthTexture, false);
             cmb.EndSample(s_ProfDraw);
+        }
+
+        public void CaptureShotForCameraList()
+        {
+            if (m_ActiveSplats.Count <= 0) return;
+            
+            var kvp = m_ActiveSplats[0];
+            var gs = kvp.Item1;
+
+            gs.CaptureShotForCameraList();
         }
 
         public float GetTextureScale()

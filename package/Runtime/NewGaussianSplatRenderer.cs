@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using GPUInt64Sorting.Runtime;
 using Unity.Collections.LowLevel.Unsafe;
@@ -874,6 +875,32 @@ namespace GaussianSplatting.Runtime
             Camera.main.transform.localRotation = Quaternion.LookRotation(-1 * cam.axisZ, cam.axisY);
             Camera.main.transform.parent = prevParent;
             Camera.main.fieldOfView = cam.fov;
+        }
+
+        public void CaptureShotForCameraList()
+        {
+            StartCoroutine(CaptureShotForCameraListCoroutine());
+        }
+
+        private IEnumerator CaptureShotForCameraListCoroutine()
+        {
+            string dir = "Screenshots";
+            if (!System.IO.File.Exists(dir))
+            {
+                System.IO.Directory.CreateDirectory(dir);
+            }
+            
+            
+            for (var i = 0; i < m_Asset.cameras.Length; i++)
+            {
+                yield return new WaitForSeconds(0.01f);
+                var cam = m_Asset.cameras[i];
+                UpdateCamera(cam);
+                
+                string path = $"{dir}/cam-{i:0000}.png";
+                ScreenCapture.CaptureScreenshot(path);
+                yield return null;
+            }
         }
     }
 }
