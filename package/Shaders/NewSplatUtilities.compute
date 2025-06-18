@@ -248,7 +248,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerLeftClipPos = mul(vp_left_matrix, float4(centerWorldPos, 1));
 
-    if (OcclusionCulled(centerWorldPos, _VecWorldSpaceCameraPos.xyz, _RO_PlaneData, _NumOcclusionPlane)) return;
+    // if (OcclusionCulled(centerWorldPos, _VecWorldSpaceCameraPos.xyz, _RO_PlaneData, _NumOcclusionPlane)) return;
     
     #if defined(SINGLE_PASS_STEREO)
     float4 centerRightClipPos = mul(vp_right_matrix, float4(centerWorldPos, 1));
@@ -283,7 +283,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
     float2 left_uv = clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset);
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
-    if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
+    // if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
     #endif
     
     half4 color = LoadSplatColor(idx);

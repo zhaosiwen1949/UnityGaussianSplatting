@@ -173,16 +173,6 @@ namespace GaussianSplatting.Runtime
             cmb.EndSample(s_ProfDraw);
         }
 
-        public void CaptureShotForCameraList()
-        {
-            if (m_ActiveSplats.Count <= 0) return;
-            
-            var kvp = m_ActiveSplats[0];
-            var gs = kvp.Item1;
-
-            gs.CaptureShotForCameraList();
-        }
-
         public float GetTextureScale()
         {
             if (m_ActiveSplats.Count <= 0) return 1.0f;

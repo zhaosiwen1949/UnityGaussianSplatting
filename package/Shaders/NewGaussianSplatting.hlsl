@@ -8,9 +8,11 @@
 #define BLOCK_X 8
 #define BLOCK_Y 8
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
-#define TEST_ALPHA 0.0003
+// #define TEST_ALPHA 0.0003
+#define TEST_ALPHA 0.000001
 #define LN2 0.693147180559945
-#define ALPHA_T 96.0f // 表示高斯投影半径，截止在透明度为 1/16 处
+// #define ALPHA_T 96.0f // 表示高斯投影半径，截止在透明度为 1/16 处
+#define ALPHA_T 256.0f // 表示高斯投影半径，截止在透明度为 1/16 处
 
 struct PlaneData 
 {
@@ -451,10 +453,10 @@ bool InFrustum(float4 clipPos, float2 clipScale)
     // TODO: viewPos.z 是否可以通过 clipPos.w 得到【可以，两者之间是乘以1个负号的关系】
     // TODO: 验证视锥体范围内点的 Z 值到底是正还是负【viewPos 的正值】
     if (clipPos.w <= 0.2f
-        || clipPos.x * inv_clip_w > clipScale.x
-        || clipPos.x * inv_clip_w < -1 * clipScale.x
-        || clipPos.y * inv_clip_w > clipScale.y
-        || clipPos.y * inv_clip_w < -1 * clipScale.y
+        // || clipPos.x * inv_clip_w > clipScale.x
+        // || clipPos.x * inv_clip_w < -1 * clipScale.x
+        // || clipPos.y * inv_clip_w > clipScale.y
+        // || clipPos.y * inv_clip_w < -1 * clipScale.y
         ) return false;
     return true;
 }

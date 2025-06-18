@@ -27,7 +27,11 @@ namespace GaussianSplatting.Editor.Utils
         [MenuItem("Tools/Gaussian Splats/Debug/Capture Screenshot for camera list %h")]
         public static void CaptureShotForCameraList()
         {
-            NewGaussianSplatRenderSystem.instance.CaptureShotForCameraList();
+            var capture = FindObjectOfType<NewCaptureCameraList>();
+            if (capture != null)
+            {
+                capture.CaptureShotForCameraList();
+            }
         }
     }
 }
