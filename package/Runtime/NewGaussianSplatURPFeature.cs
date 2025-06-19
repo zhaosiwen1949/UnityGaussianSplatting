@@ -195,13 +195,13 @@ namespace GaussianSplatting.Runtime
                         data.PreRightViewProjectionMatrix
                     );
                     
-                    // TextureConverter.ToTensor(commandBuffer,data.GaussianSplatRT, data.InputTensor, new TextureTransform());
-                    //
-                    // commandBuffer.ScheduleWorker(data.SrWorker, data.InputTensor);
-                    //
-                    // var output = data.SrWorker.PeekOutput() as Tensor<float>;
-                    //
-                    // TextureConverter.RenderToTexture(commandBuffer, output, data.BlitRT, new TextureTransform().SetCoordOrigin(CoordOrigin.TopLeft));
+                    TextureConverter.ToTensor(commandBuffer,data.GaussianSplatRT, data.InputTensor, new TextureTransform());
+                    
+                    commandBuffer.ScheduleWorker(data.SrWorker, data.InputTensor);
+                    
+                    var output = data.SrWorker.PeekOutput() as Tensor<float>;
+                    
+                    TextureConverter.RenderToTexture(commandBuffer, output, data.BlitRT, new TextureTransform().SetCoordOrigin(CoordOrigin.TopLeft));
                     
                     // NewGaussianSplatRenderSystem.instance.TileSingleRenderSplats(
                     //     data.CameraData.camera,
@@ -215,17 +215,8 @@ namespace GaussianSplatting.Runtime
                     
                     commandBuffer.BeginSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                     commandBuffer.SetFoveatedRenderingMode(FoveatedRenderingMode.Enabled);
-                    BlitCameraTexture(commandBuffer, 
-                        data.GaussianSplatRT, 
-                        data.SourceTexture, 
-                        data.CurrentGaussianSplatDepth,
-                        data.BlitRT,
-                        data.BlitMaterial, 
-                        data.ScreenScale,
-                        data.Sharpness,
-                        data.ShowDepth);
                     // BlitCameraTexture(commandBuffer, 
-                    //     data.BlitRT, 
+                    //     data.GaussianSplatRT, 
                     //     data.SourceTexture, 
                     //     data.CurrentGaussianSplatDepth,
                     //     data.BlitRT,
@@ -233,6 +224,15 @@ namespace GaussianSplatting.Runtime
                     //     data.ScreenScale,
                     //     data.Sharpness,
                     //     data.ShowDepth);
+                    BlitCameraTexture(commandBuffer, 
+                        data.BlitRT, 
+                        data.SourceTexture, 
+                        data.CurrentGaussianSplatDepth,
+                        data.BlitRT,
+                        data.BlitMaterial, 
+                        data.ScreenScale,
+                        data.Sharpness,
+                        data.ShowDepth);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }

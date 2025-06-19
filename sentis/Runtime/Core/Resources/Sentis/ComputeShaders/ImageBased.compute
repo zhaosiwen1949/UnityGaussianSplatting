@@ -147,7 +147,7 @@ uint blocksize;
 
 #define FUNC_NAME_D(MODE_D) DepthToSpace##MODE_D
 
-[numthreads(8, 8, 1)]
+[numthreads(8, 32, 1)]
 void FUNC_NAME_D(MODE_D)(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint c = dispatchThreadID.x % outputChannels;
