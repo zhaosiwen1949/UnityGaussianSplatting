@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 01052c1a4da12064d8681d7c1800f94a, type: 3}
   m_Name: GaussianSplatURPFeature
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
 --- !u!114 &-1194481055924858602
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -27,6 +27,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Active: 1
   blitShader: {fileID: 4800000, guid: ca1055a08ea6dde43bc0261de7ba8a51, type: 3}
+  showDepth: 0
+  quicksrModel: {fileID: 5022602860645237092, guid: 13b19562f777f11409267dc920c36fd6, type: 3}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -59,6 +59,10 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
                 int2 positionSS  = uv * _SourceSize.xy;
                 color = half4(ApplyRCAS(positionSS), 1.0);
             }
+            
+            // // Bilinear
+            // uv = clamp(uv, down_limit, up_limit);
+            // color = half4(SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, uv, 0));
             #endif
 
             return color;

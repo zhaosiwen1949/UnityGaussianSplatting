@@ -14,6 +14,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.XR;
+using Unity.Sentis;
 
 namespace GaussianSplatting.Runtime
 {
@@ -37,7 +38,9 @@ namespace GaussianSplatting.Runtime
             
             public Material blitMaterial { get; set; }
             public bool ShowDepth;
-
+            public Worker QuickSrEngine;
+            
+            private Tensor<float> m_inputTensor = new Tensor<float>(new TensorShape(1, 3, 800, 600));
             private float TextureScale = 1.0f;
             private RTHandle m_preDepthTexture;
             private RTHandle m_currentDepthTexture;
@@ -48,6 +51,8 @@ namespace GaussianSplatting.Runtime
             
             class PassData
             {
+                internal Worker SrWorker;
+                internal Tensor<float> InputTensor;
                 internal UniversalCameraData CameraData;
                 internal Material BlitMaterial;
                 internal float2 ScreenScale;
@@ -118,6 +123,8 @@ namespace GaussianSplatting.Runtime
                 TextureHandle preDepthTextureHandle = renderGraph.ImportTexture(m_preDepthTexture);
                 TextureHandle currentDepthTextureHandle = renderGraph.ImportTexture(m_currentDepthTexture);
                 
+                passData.SrWorker = QuickSrEngine;
+                passData.InputTensor = m_inputTensor;
                 passData.CameraData = cameraData;
                 passData.BlitMaterial = blitMaterial;
                 passData.ScreenScale = new float2(NewGaussianSplatRenderSystem.instance.GetWidthScale(),
@@ -162,7 +169,8 @@ namespace GaussianSplatting.Runtime
                     Matrix4x4 currentGLProjectionMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true);
                     m_preViewProjectionMatrix = currentGLProjectionMatrix * currentViewMatrix;
                 }
-
+                
+                // builder.UseTexture();
                 builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
                 builder.UseTexture(resourceData.activeDepthTexture);
                 builder.UseTexture(textureHandle, AccessFlags.Write);
@@ -187,6 +195,14 @@ namespace GaussianSplatting.Runtime
                         data.PreRightViewProjectionMatrix
                     );
                     
+                    // TextureConverter.ToTensor(commandBuffer,data.GaussianSplatRT, data.InputTensor, new TextureTransform());
+                    //
+                    // commandBuffer.ScheduleWorker(data.SrWorker, data.InputTensor);
+                    //
+                    // var output = data.SrWorker.PeekOutput() as Tensor<float>;
+                    //
+                    // TextureConverter.RenderToTexture(commandBuffer, output, data.BlitRT, new TextureTransform().SetCoordOrigin(CoordOrigin.TopLeft));
+                    
                     // NewGaussianSplatRenderSystem.instance.TileSingleRenderSplats(
                     //     data.CameraData.camera,
                     //     commandBuffer,
@@ -208,6 +224,15 @@ namespace GaussianSplatting.Runtime
                         data.ScreenScale,
                         data.Sharpness,
                         data.ShowDepth);
+                    // BlitCameraTexture(commandBuffer, 
+                    //     data.BlitRT, 
+                    //     data.SourceTexture, 
+                    //     data.CurrentGaussianSplatDepth,
+                    //     data.BlitRT,
+                    //     data.BlitMaterial, 
+                    //     data.ScreenScale,
+                    //     data.Sharpness,
+                    //     data.ShowDepth);
                     commandBuffer.EndSample(NewGaussianSplatRenderSystem.s_ProfCompose);
                 });
             }
@@ -216,6 +241,8 @@ namespace GaussianSplatting.Runtime
             {
                 m_preDepthTexture?.Release();
                 m_currentDepthTexture?.Release();
+                m_inputTensor?.Dispose();
+                QuickSrEngine?.Dispose();
             }
             
             static MaterialPropertyBlock s_PropertyBlock = new MaterialPropertyBlock();
@@ -259,9 +286,16 @@ namespace GaussianSplatting.Runtime
                 // s_PropertyBlock.SetTexture(BlitTexture, blitRT);
                 s_PropertyBlock.SetTexture(BlitTexture, source);
                 s_PropertyBlock.SetTexture(BlitDepth, depth);
-                float width = blitRT.rt.width;
-                float height = blitRT.rt.height;
-                if (blitRT.rt.useDynamicScale)
+                // float width = blitRT.rt.width;
+                // float height = blitRT.rt.height;
+                // if (blitRT.rt.useDynamicScale)
+                // {
+                //     width *= ScalableBufferManager.widthScaleFactor;
+                //     height *= ScalableBufferManager.heightScaleFactor;
+                // }
+                float width = source.rt.width;
+                float height = source.rt.height;
+                if (source.rt.useDynamicScale)
                 {
                     width *= ScalableBufferManager.widthScaleFactor;
                     height *= ScalableBufferManager.heightScaleFactor;
@@ -294,16 +328,27 @@ namespace GaussianSplatting.Runtime
         NewGSRenderPass m_Pass;
         bool m_HasCamera;
         
+        
         public Shader blitShader;
         public bool showDepth;
+        public ModelAsset quicksrModel;
 
         public override void Create()
         {
-           m_Pass = new NewGSRenderPass
+            if (quicksrModel == null)
+            {
+                Debug.LogError("quicksrModel is null");
+                return;
+            }
+            
+            var model = ModelLoader.Load(quicksrModel);
+            
+            m_Pass = new NewGSRenderPass
             {
                 renderPassEvent = RenderPassEvent.BeforeRenderingTransparents,
                 blitMaterial = CoreUtils.CreateEngineMaterial(blitShader),
-                ShowDepth = showDepth
+                ShowDepth = showDepth,
+                QuickSrEngine = new Worker(model, BackendType.GPUCompute),
             };
         }
 
@@ -320,6 +365,8 @@ namespace GaussianSplatting.Runtime
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
             if (!m_HasCamera)
+                return;
+            if (m_Pass == null)
                 return;
             renderer.EnqueuePass(m_Pass);
         }
