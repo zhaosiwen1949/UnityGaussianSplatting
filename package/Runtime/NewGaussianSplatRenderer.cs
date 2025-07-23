@@ -267,7 +267,7 @@ namespace GaussianSplatting.Runtime
             m_SinglePassSingleKeyWord = new LocalKeyword(m_CSSplatUtilities, "SINGLE_PASS_SINGLE");
 
             m_SplatCount = asset.splatCount;
-            m_TileRenderCount = 2 * asset.splatCount;
+            m_TileRenderCount = 5 * asset.splatCount;
             m_GpuPosData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.posData.dataSize / 4), 4) { name = "GaussianPosData" };
             m_GpuPosData.SetData(asset.posData.GetData<uint>());
             m_GpuOtherData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.otherData.dataSize / 4), 4) { name = "GaussianOtherData" };
