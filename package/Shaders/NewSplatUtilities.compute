@@ -15,7 +15,8 @@
 // #pragma multi_compile __ PAYLOAD_UINT PAYLOAD_INT PAYLOAD_FLOAT
 #pragma multi_compile __ SHOULD_ASCEND
 // #pragma multi_compile __ SORT_PAIRS
-#pragma multi_compile __ SINGLE_PASS_STEREO SINGLE_PASS_SINGLE 
+#pragma multi_compile __ SINGLE_PASS_STEREO SINGLE_PASS_SINGLE
+#pragma multi_compile __ USE_LOD
 
 // #define SINGLE_PASS_STEREO
 // #define SINGLE_PASS_SINGLE
@@ -247,6 +248,11 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float3 position = LoadSplatPosValue(idx);
     float3 centerWorldPos = mul(_MatrixObjectToWorld, float4(position,1)).xyz;
     float4 centerLeftClipPos = mul(vp_left_matrix, float4(centerWorldPos, 1));
+
+    #if defined(USE_LOD)
+    float2 depthThresholds = LoadSplatLOD(idx);
+    if (centerLeftClipPos.w < depthThresholds.x || centerLeftClipPos.w > depthThresholds.y) return;
+    #endif
 
     // if (OcclusionCulled(centerWorldPos, _VecWorldSpaceCameraPos.xyz, _RO_PlaneData, _NumOcclusionPlane)) return;
     

@@ -453,10 +453,10 @@ bool InFrustum(float4 clipPos, float2 clipScale)
     // TODO: viewPos.z 是否可以通过 clipPos.w 得到【可以，两者之间是乘以1个负号的关系】
     // TODO: 验证视锥体范围内点的 Z 值到底是正还是负【viewPos 的正值】
     if (clipPos.w <= 0.2f
-        // || clipPos.x * inv_clip_w > clipScale.x
-        // || clipPos.x * inv_clip_w < -1 * clipScale.x
-        // || clipPos.y * inv_clip_w > clipScale.y
-        // || clipPos.y * inv_clip_w < -1 * clipScale.y
+        || clipPos.x * inv_clip_w > clipScale.x
+        || clipPos.x * inv_clip_w < -1 * clipScale.x
+        || clipPos.y * inv_clip_w > clipScale.y
+        || clipPos.y * inv_clip_w < -1 * clipScale.y
         ) return false;
     return true;
 }
@@ -772,6 +772,7 @@ uint EncodeQuatToNorm10(float4 v) // 32 bits: 10.10.10.2
 SplatBufferDataType _SplatPos;
 SplatBufferDataType _SplatOther;
 SplatBufferDataType _SplatSH;
+SplatBufferDataType _SplatLOD;
 Texture2D _SplatColor;
 uint _SplatFormat;
 
@@ -800,6 +801,20 @@ uint LoadUInt(SplatBufferDataType dataBuffer, uint addrU)
         val = (val >> 16) | ((val1 & 0xFFFF) << 16);
     }
     return val;
+}
+
+float2 LoadFloat2(SplatBufferDataType dataBuffer, uint addrU)
+{
+    uint addrA = addrU & ~0x3;
+    uint val0 = dataBuffer.Load(addrA);
+    uint val1 = dataBuffer.Load(addrA + 4);
+    if (addrU != addrA)
+    {
+        uint val2 = dataBuffer.Load(addrA + 8);
+        val0 = (val0 >> 16) | ((val1 & 0xFFFF) << 16);
+        val1 = (val1 >> 16) | ((val2 & 0xFFFF) << 16);
+    }
+    return float2(asfloat(val0), asfloat(val1));
 }
 
 float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
@@ -848,6 +863,11 @@ float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
         res = DecodePacked_6_5_5(val0);
     }
     return res;
+}
+
+float2 LoadSplatLOD(uint idx)
+{
+    return LoadFloat2(_SplatLOD, idx * 8);
 }
 
 float3 LoadSplatPosValue(uint index)

@@ -45,11 +45,13 @@ namespace GaussianSplatting.Editor
                 GUI.backgroundColor *= Color.red;
             EditorGUILayout.IntField("Version", gs.formatVersion);
             GUI.backgroundColor = prevBackColor;
+            EditorGUILayout.TextField("Is LOD GaussianSplat", $"{gs.isLOD}");
 
             long sizePos = gs.posData != null ? gs.posData.dataSize : 0;
             long sizeOther = gs.otherData != null ? gs.otherData.dataSize : 0;
             long sizeCol = gs.colorData != null ? gs.colorData.dataSize : 0;
             long sizeSH = GaussianSplatAsset.CalcSHDataSize(gs.splatCount, gs.shFormat);
+            long sizeLOD = gs.lodData != null ? gs.lodData.dataSize : 0;
             long sizeChunk = gs.chunkData != null ? gs.chunkData.dataSize : 0;
 
             EditorGUILayout.TextField("Memory", EditorUtility.FormatBytes(sizePos + sizeOther + sizeSH + sizeCol + sizeChunk));
@@ -58,6 +60,7 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.TextField("Other", $"{EditorUtility.FormatBytes(sizeOther)}  ({gs.scaleFormat})");
             EditorGUILayout.TextField("Base color", $"{EditorUtility.FormatBytes(sizeCol)}  ({gs.colorFormat})");
             EditorGUILayout.TextField("SHs", $"{EditorUtility.FormatBytes(sizeSH)}  ({gs.shFormat})");
+            EditorGUILayout.TextField("LODs", $"{EditorUtility.FormatBytes(sizeLOD)}  (Float32x2)");
             EditorGUILayout.TextField("Chunks",
                 $"{EditorUtility.FormatBytes(sizeChunk)}  ({UnsafeUtility.SizeOf<GaussianSplatAsset.ChunkInfo>()} B/chunk)");
             EditorGUI.indentLevel--;

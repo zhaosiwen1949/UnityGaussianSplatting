@@ -17,7 +17,7 @@ using UnityEngine.Experimental.Rendering;
 namespace GaussianSplatting.Editor
 {
     [BurstCompile]
-    public class GaussianSplatAssetCreator : EditorWindow
+    public partial class GaussianSplatAssetCreator : EditorWindow
     {
         const string kProgressTitle = "Creating Gaussian Splat Asset";
         const string kCamerasJson = "cameras.json";
@@ -38,6 +38,7 @@ namespace GaussianSplatting.Editor
 
         [SerializeField] string m_InputFile;
         [SerializeField] bool m_ImportCameras = true;
+        [SerializeField] bool m_IsLODGausssianAsset = false;
 
         [SerializeField] string m_OutputFolder = "Assets/GaussianAssets";
         [SerializeField] DataQuality m_Quality = DataQuality.Medium;
@@ -84,6 +85,7 @@ namespace GaussianSplatting.Editor
             var rect = EditorGUILayout.GetControlRect(true);
             m_InputFile = m_FilePicker.PathFieldGUI(rect, new GUIContent("Input PLY/SPZ File"), m_InputFile, "ply,spz", "PointCloudFile");
             m_ImportCameras = EditorGUILayout.Toggle("Import Cameras", m_ImportCameras);
+            m_IsLODGausssianAsset = EditorGUILayout.Toggle("Is LOD Gaussian Splat", m_IsLODGausssianAsset);
 
             if (m_InputFile != m_PrevFilePath && !string.IsNullOrWhiteSpace(m_InputFile))
             {
@@ -165,7 +167,14 @@ namespace GaussianSplatting.Editor
             GUILayout.Space(30);
             if (GUILayout.Button("Create Asset"))
             {
-                CreateAsset();
+                if (m_IsLODGausssianAsset)
+                {
+                    CreateLODAsset();
+                }
+                else
+                {
+                    CreateAsset();
+                }
             }
             GUILayout.Space(30);
             GUILayout.EndHorizontal();
@@ -284,7 +293,7 @@ namespace GaussianSplatting.Editor
 
             EditorUtility.DisplayProgressBar(kProgressTitle, "Creating data objects", 0.7f);
             GaussianSplatAsset asset = ScriptableObject.CreateInstance<GaussianSplatAsset>();
-            asset.Initialize(inputSplats.Length, m_FormatPos, m_FormatScale, m_FormatColor, m_FormatSH, boundsMin, boundsMax, cameras);
+            asset.Initialize(inputSplats.Length, m_FormatPos, m_FormatScale, m_FormatColor, m_FormatSH, boundsMin, boundsMax, cameras, false);
             asset.name = baseName;
 
             var dataHash = new Hash128((uint)asset.splatCount, (uint)asset.formatVersion, 0, 0);
@@ -317,7 +326,8 @@ namespace GaussianSplatting.Editor
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathPos),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathOther),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathCol),
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh));
+                AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh),
+                null);
 
             var assetPath = $"{m_OutputFolder}/{baseName}.asset";
             var savedAsset = CreateOrReplaceAsset(asset, assetPath);
