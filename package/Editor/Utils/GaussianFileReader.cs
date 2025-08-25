@@ -27,13 +27,15 @@ namespace GaussianSplatting.Editor.Utils
     {
         public Vector3 pos;
         public Vector3 nor;
+        public float dmin;
+        public float dmax;
+        public float amin;
+        public float amax;
         public Vector3 dc0;
         public Vector3 sh1, sh2, sh3, sh4, sh5, sh6, sh7, sh8, sh9, shA, shB, shC, shD, shE, shF;
         public float opacity;
         public Vector3 scale;
         public Quaternion rot;
-        public float dmin;
-        public float dmax;
     }
 
     [BurstCompile]
@@ -143,7 +145,7 @@ namespace GaussianSplatting.Editor.Utils
         static unsafe void ReorderSHsWithLOD(int splatCount, float* data)
         {
             int splatStride = UnsafeUtility.SizeOf<InputSplatDataWithLOD>() / 4;
-            int shStartOffset = 9, shCount = 15;
+            int shStartOffset = 13, shCount = 15;
             float* tmp = stackalloc float[shCount * 3];
             int idx = shStartOffset;
             for (int i = 0; i < splatCount; ++i)

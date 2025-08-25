@@ -60,7 +60,7 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.TextField("Other", $"{EditorUtility.FormatBytes(sizeOther)}  ({gs.scaleFormat})");
             EditorGUILayout.TextField("Base color", $"{EditorUtility.FormatBytes(sizeCol)}  ({gs.colorFormat})");
             EditorGUILayout.TextField("SHs", $"{EditorUtility.FormatBytes(sizeSH)}  ({gs.shFormat})");
-            EditorGUILayout.TextField("LODs", $"{EditorUtility.FormatBytes(sizeLOD)}  (Float32x2)");
+            EditorGUILayout.TextField("LODs", $"{EditorUtility.FormatBytes(sizeLOD)}  (Float32x4)");
             EditorGUILayout.TextField("Chunks",
                 $"{EditorUtility.FormatBytes(sizeChunk)}  ({UnsafeUtility.SizeOf<GaussianSplatAsset.ChunkInfo>()} B/chunk)");
             EditorGUI.indentLevel--;

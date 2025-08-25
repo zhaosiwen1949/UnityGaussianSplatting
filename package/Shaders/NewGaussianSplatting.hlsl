@@ -32,6 +32,12 @@ struct GeomData
     float2 mean2D;
 };
 
+inline float rand(uint seed)
+{
+    float enhanced_seed = (float) seed + frac(_Time.y *  0.1);
+    return frac(sin(dot(enhanced_seed, float2(12.9898, 78.233))) * 43758.5453);
+}
+
 inline half3 GammaToLinearSpace (half3 sRGB)
 {
     // Approximate version from http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html?m=1
@@ -817,6 +823,24 @@ float2 LoadFloat2(SplatBufferDataType dataBuffer, uint addrU)
     return float2(asfloat(val0), asfloat(val1));
 }
 
+float4 LoadFloat4(SplatBufferDataType dataBuffer, uint addrU)
+{
+    uint addrA = addrU & ~0x3;
+    uint val0 = dataBuffer.Load(addrA);
+    uint val1 = dataBuffer.Load(addrA + 4);
+    uint val2 = dataBuffer.Load(addrA + 8);
+    uint val3 = dataBuffer.Load(addrA + 12);
+    if (addrU != addrA)
+    {
+        uint val4 = dataBuffer.Load(addrA + 16);
+        val0 = (val0 >> 16) | ((val1 & 0xFFFF) << 16);
+        val1 = (val1 >> 16) | ((val2 & 0xFFFF) << 16);
+        val2 = (val2 >> 16) | ((val3 & 0xFFFF) << 16);
+        val3 = (val3 >> 16) | ((val4 & 0xFFFF) << 16);
+    }
+    return float4(asfloat(val0), asfloat(val1), asfloat(val2), asfloat(val3));
+}
+
 float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
 {
     uint addrA = addrU & ~0x3;
@@ -865,9 +889,9 @@ float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
     return res;
 }
 
-float2 LoadSplatLOD(uint idx)
+float4 LoadSplatLOD(uint idx)
 {
-    return LoadFloat2(_SplatLOD, idx * 8);
+    return LoadFloat4(_SplatLOD, idx * 16);
 }
 
 float3 LoadSplatPosValue(uint index)

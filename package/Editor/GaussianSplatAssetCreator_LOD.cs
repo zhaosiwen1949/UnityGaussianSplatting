@@ -567,17 +567,21 @@ namespace GaussianSplatting.Editor
 
             public unsafe void Execute(int index)
             {
-                byte* outputPtr = (byte*) m_Output.GetUnsafePtr() + index * 8;
+                byte* outputPtr = (byte*) m_Output.GetUnsafePtr() + index * 16;
                 *(float*)outputPtr = m_Input[index].dmin;
                 outputPtr += 4;
                 *(float*)outputPtr = m_Input[index].dmax;
+                outputPtr += 4;
+                *(float*)outputPtr = m_Input[index].amin;
+                outputPtr += 4;
+                *(float*)outputPtr = m_Input[index].amax;
             }
         }
         
         void CreateLODData(NativeArray<InputSplatDataWithLOD> inputSplats, string filePath, ref Hash128 dataHash)
         {
-            int dataLen = inputSplats.Length * 8;
-            dataLen = NextMultipleOf(dataLen, 8); // serialized as ulong
+            int dataLen = inputSplats.Length * 16;
+            dataLen = NextMultipleOf(dataLen, 4); // serialized as ulong
             NativeArray<byte> data = new(dataLen, Allocator.TempJob);
 
             CreateLODDataJobWithLOD job = new CreateLODDataJobWithLOD

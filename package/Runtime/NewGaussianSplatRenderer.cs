@@ -86,6 +86,7 @@ namespace GaussianSplatting.Runtime
         [Range(0.1f, 1.0f)] public float m_TextureScale = 0.5f;
         [Range(0.05f, 1.0f)] public float m_DepthCullingThreshold = 0.4f;
         [Range(0.0f, 1.0f)] public float m_Sharpness = 0.92f;
+        [Range(0.0f, 10.0f)] public float m_LodBase = 0.0f;
         
 
         public GaussianCutout[] m_Cutouts;
@@ -197,6 +198,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int RO_BinRightPointListValue = Shader.PropertyToID("_RO_BinRightPointListValue");
             
             public static readonly int NumOcclusionPlane = Shader.PropertyToID("_NumOcclusionPlane");
+            public static readonly int LodBase = Shader.PropertyToID("_LodBase");
             public static readonly int TileConfig = Shader.PropertyToID("_TileConfig");
             public static readonly int TileScale = Shader.PropertyToID("_TileScale");
             public static readonly int DepthCullingThreshold = Shader.PropertyToID("_DepthCullingThreshold");
@@ -646,6 +648,9 @@ namespace GaussianSplatting.Runtime
             
             // 设定深度剔除的阈值
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.DepthCullingThreshold, m_DepthCullingThreshold);
+            
+            // 设定 LOD Base 数值
+            cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.LodBase, m_LodBase);
             
             // 构造排序的 key【tile | depth】 和 value【coll_id】
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.PreProcessViewData,
