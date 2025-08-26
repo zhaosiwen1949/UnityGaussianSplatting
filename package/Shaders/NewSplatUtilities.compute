@@ -258,13 +258,13 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     // 根据距视觉中心的角度，应用 LOD
     float4 centerViewPos = mul(_MatrixMV, float4(position, 1));
     float cosTheta = dot(normalize(centerViewPos.xyz), float3(0.0, 0.0, -1.0));
-    float angleOffset = -0.05 + rand(idx) * 0.05;
-    float angleExtend = 0.05;
+    float angleOffset = -3 + rand(idx) * 6;
+    float angleExtend = 3;
 
     float4 thresholds = LoadSplatLOD(idx);
     if ( centerLeftClipPos.w > thresholds.y + depthOffset + depthExtend ||
-        cosTheta < thresholds.w + angleOffset - angleExtend ||
-        (centerLeftClipPos.w < thresholds.x + depthOffset - depthExtend && cosTheta > thresholds.z + angleOffset + angleExtend)) return;
+        cosTheta < cos(radians(thresholds.w + angleOffset + angleExtend)) ||
+        (centerLeftClipPos.w < thresholds.x + depthOffset - depthExtend && cosTheta > cos(radians(thresholds.z + angleOffset - angleExtend)))) return;
     
     #endif
 
