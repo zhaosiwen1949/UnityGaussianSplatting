@@ -363,7 +363,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     // 计算投影中心
     float2 centerRightNDCPos = centerRightClipPos.xy / centerRightClipPos.w;
     // 偏移点云在屏幕坐标系中的位置，整体移动到左下角
-    float2 mean_right_2d = ((centerRightNDCPos - (1.0f - _VecScreenParams.zw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+    float2 mean_right_2d = ((centerRightNDCPos - (1.0f - _VecScreenOffset.xz) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     
     // 通过 EWA 方法，投影 3D 高斯到平面上的 2D 高斯
     float3 cov_right_2d;
@@ -607,7 +607,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         float3 left_view_pos = float3((global_id.x - W * 0.5) * scale, (H * 0.5 - global_id.y) * scale, left_depth);
         float4 right_clip_pos = mul(_MatrixRPRVLV, float4(left_view_pos, 1.0));
         float2 right_ndc_pos = right_clip_pos.xy / right_clip_pos.w;
-        float2 right_mean_2d = ((right_ndc_pos - (1.0f - _VecScreenOffset.xw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+        float2 right_mean_2d = ((right_ndc_pos - (1.0f - _VecScreenOffset.xz) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
         
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(gamma_color, 1.0 - left_T);
         _GSRenderTexture[uint3(right_mean_2d.x + w_offset, H + h_offset - right_mean_2d.y, 1)] = float4(gamma_color, 1.0 - left_T);
