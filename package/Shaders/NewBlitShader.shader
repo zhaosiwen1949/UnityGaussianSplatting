@@ -40,9 +40,9 @@ Shader "Hidden/New Gaussian Splatting/NewBlitShader"
             UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
             float2 uv = UnityStereoTransformScreenSpaceTex(input.texcoord);
-            float2 offset = (1.0 - _ScreenScale) * 0.5;
-            float2 down_limit = offset + _BlitTexture_TexelSize.xy;
-            float2 up_limit = 1.0 - offset - _BlitTexture_TexelSize.xy;
+            float4 offset = (1.0 - _ScreenScale) * 0.5;
+            float2 down_limit = offset.xw + _BlitTexture_TexelSize.xy;
+            float2 up_limit = 1.0 - offset.yz - _BlitTexture_TexelSize.xy;
 
             half4 color = 0.0;
             #if defined(SHOW_DEPTH)

@@ -181,23 +181,14 @@ namespace GaussianSplatting.Runtime
             var gs = kvp.Item1;
             return gs.m_TextureScale;
         }
-
-        public float GetWidthScale()
+        
+        public Vector4 GetScreenOffset()
         {
-            if (m_ActiveSplats.Count <= 0) return 1.0f;
+            if (m_ActiveSplats.Count <= 0) return Vector4.one;
             
             var kvp = m_ActiveSplats[0];
             var gs = kvp.Item1;
-            return gs.m_WidthScale;
-        }
-
-        public float GetHeightScale()
-        {
-            if (m_ActiveSplats.Count <= 0) return 1.0f;
-            
-            var kvp = m_ActiveSplats[0];
-            var gs = kvp.Item1;
-            return gs.m_HeightScale;
+            return gs.GetScreenOffset();
         }
         
         public float GetSharpness()

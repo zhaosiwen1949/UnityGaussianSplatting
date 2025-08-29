@@ -452,17 +452,17 @@ bool OcclusionCulled(float3 point_pos, float3 camera_pos, StructuredBuffer<Plane
     return false;
 }
 
-bool InFrustum(float4 clipPos, float2 clipScale)
+bool InFrustum(float4 clipPos, float4 clipScale)
 {
     clipScale *= 1.0;
     float inv_clip_w = 1.0f / clipPos.w;
     // TODO: viewPos.z 是否可以通过 clipPos.w 得到【可以，两者之间是乘以1个负号的关系】
     // TODO: 验证视锥体范围内点的 Z 值到底是正还是负【viewPos 的正值】
     if (clipPos.w <= 0.2f
-        || clipPos.x * inv_clip_w > clipScale.x
+        || clipPos.x * inv_clip_w > clipScale.y
         || clipPos.x * inv_clip_w < -1 * clipScale.x
-        || clipPos.y * inv_clip_w > clipScale.y
-        || clipPos.y * inv_clip_w < -1 * clipScale.y
+        || clipPos.y * inv_clip_w > clipScale.w
+        || clipPos.y * inv_clip_w < -1 * clipScale.z
         ) return false;
     return true;
 }

@@ -55,7 +55,7 @@ namespace GaussianSplatting.Runtime
                 internal Tensor<float> InputTensor;
                 internal UniversalCameraData CameraData;
                 internal Material BlitMaterial;
-                internal float2 ScreenScale;
+                internal Vector4 ScreenScale;
                 internal float Sharpness;
                 internal bool ShowDepth;
                 internal TextureHandle SourceTexture;
@@ -127,8 +127,7 @@ namespace GaussianSplatting.Runtime
                 passData.InputTensor = m_inputTensor;
                 passData.CameraData = cameraData;
                 passData.BlitMaterial = blitMaterial;
-                passData.ScreenScale = new float2(NewGaussianSplatRenderSystem.instance.GetWidthScale(),
-                    NewGaussianSplatRenderSystem.instance.GetHeightScale());
+                passData.ScreenScale = NewGaussianSplatRenderSystem.instance.GetScreenOffset();
                 passData.Sharpness = NewGaussianSplatRenderSystem.instance.GetSharpness();
                 passData.ShowDepth = ShowDepth;
                 passData.SourceTexture = resourceData.activeColorTexture;
@@ -258,7 +257,7 @@ namespace GaussianSplatting.Runtime
                 RTHandle depth,
                 RTHandle blitRT,
                 Material material,
-                float2 screen_scale,
+                Vector4 screen_scale,
                 float sharpness,
                 bool showDepth)
             {
@@ -281,7 +280,7 @@ namespace GaussianSplatting.Runtime
                 // Vector2 blitViewportScale = blitRT.useScaling ? new Vector2(blitRT.rtHandleProperties.rtHandleScale.x, blitRT.rtHandleProperties.rtHandleScale.y) : Vector2.one;
                 Vector2 blitViewportScale = source.useScaling ? new Vector2(source.rtHandleProperties.rtHandleScale.x, source.rtHandleProperties.rtHandleScale.y) : Vector2.one;
                 CoreUtils.SetRenderTarget(cmd, destination);
-                s_PropertyBlock.SetVector(ScreenScale, new Vector2(screen_scale.x, screen_scale.y));
+                s_PropertyBlock.SetVector(ScreenScale, screen_scale);
                 s_PropertyBlock.SetVector(BlitScaleBias, blitViewportScale);
                 // s_PropertyBlock.SetTexture(BlitTexture, blitRT);
                 s_PropertyBlock.SetTexture(BlitTexture, source);

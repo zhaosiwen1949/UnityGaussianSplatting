@@ -48,6 +48,7 @@ float4x4 _MatrixMV;
 float4x4 _MatrixPreLeftVP;
 float4x4 _MatrixPreRightVP;
 float4 _VecScreenParams;
+float4 _VecScreenOffset;
 float4 _VecWorldSpaceCameraPos;
 int _SelectionMode;
 
@@ -273,10 +274,10 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     #if defined(SINGLE_PASS_STEREO)
     float4 centerRightClipPos = mul(vp_right_matrix, float4(centerWorldPos, 1));
     // 视锥体剔除
-    if (!(InFrustum(centerLeftClipPos, _VecScreenParams.zw) || InFrustum(centerRightClipPos, _VecScreenParams.zw))) return;
+    if (!(InFrustum(centerLeftClipPos,_VecScreenOffset) || InFrustum(centerRightClipPos, _VecScreenOffset))) return;
     #else
     // 视锥体剔除
-    if (!InFrustum(centerLeftClipPos, _VecScreenParams.zw)) return;
+    if (!InFrustum(centerLeftClipPos, _VecScreenOffset)) return;
     #endif
     
     float4 preLeftCenterClipPos = mul(_MatrixPreLeftVP, float4(centerWorldPos, 1));
@@ -286,22 +287,22 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float4 preRightCenterClipPos = mul(_MatrixPreRightVP, float4(centerWorldPos, 1));
     float2 preRightCenterNDCPos = (preRightCenterClipPos.xy / preRightCenterClipPos.w + 1) * 0.5;
 
-    float2 offset = (1.0 - _VecScreenParams.zw) * 0.45;
-    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset), 0);
-    float3 right_uv = float3(clamp(float2(preRightCenterNDCPos.x, 1.0 - preRightCenterNDCPos.y), offset, 1.0 - offset), 1);
+    float4 offset = (1.0 - _VecScreenOffset) * 0.5;
+    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset.xz, 1.0 - offset.yw), 0);
+    float3 right_uv = float3(clamp(float2(preRightCenterNDCPos.x, 1.0 - preRightCenterNDCPos.y), offset.xz, 1.0 - offset.yw), 1);
     
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     float preRightDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, right_uv, 0);
     if ((preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) && (preRightDepth > 0.0 && centerRightClipPos.w - preRightDepth > _DepthCullingThreshold)) return;
     #elif defined(SINGLE_PASS_SINGLE)
-    float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
-    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset), 0);
+    float4 offset = (1.0 - _VecScreenOffset) * 0.5;
+    float3 left_uv = float3(clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset.xz, 1.0 - offset.yw), 0);
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
     #else
     // 深度剔除
-    float2 offset = (1.0 - _VecScreenParams.zw) * 0.5;
-    float2 left_uv = clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset, 1.0 - offset);
+    float4 offset = (1.0 - _VecScreenOffset) * 0.5;
+    float2 left_uv = clamp(float2(preLeftCenterNDCPos.x, 1.0 - preLeftCenterNDCPos.y), offset.xz, 1.0 - offset.yw);
     float preLeftDepth = SAMPLE_TEXTURE2D_X_LOD(_GSPreDepthTexture, sampler_LinearClamp, left_uv, 0);
     if (preLeftDepth > 0.0 && centerLeftClipPos.w - preLeftDepth > _DepthCullingThreshold) return;
     #endif
@@ -337,7 +338,7 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     // 计算投影中心
     float2 centerLeftNDCPos = centerLeftClipPos.xy / centerLeftClipPos.w;
     // 偏移点云在屏幕坐标系中的位置，整体移动到左下角
-    float2 mean_left_2d = ((centerLeftNDCPos - (1.0f - _VecScreenParams.zw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+    float2 mean_left_2d = ((centerLeftNDCPos - (1.0f - _VecScreenOffset.xz) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
     
     // 通过 EWA 方法，投影 3D 高斯到平面上的 2D 高斯
     float3 cov_left_2d;
@@ -573,8 +574,8 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
 {
     float W = _VecScreenParams.x * _VecScreenParams.z;
     float H = _VecScreenParams.y * _VecScreenParams.w;
-    int w_offset = _VecScreenParams.x * (1.0 - _VecScreenParams.z) * 0.5;
-    int h_offset = _VecScreenParams.y * (1.0 - _VecScreenParams.w) * 0.5;
+    int w_offset = _VecScreenParams.x * (1.0 - _VecScreenOffset.x) * 0.5;
+    int h_offset = _VecScreenParams.y * (1.0 - _VecScreenOffset.w) * 0.5;
     uint block_x = BLOCK_X * _TileScale;
     uint horizontal_blocks = (uint)((W + block_x - 1) / block_x);
     group_id.xy /= _TileScale;
@@ -606,7 +607,7 @@ void CSRenderViewData (uint3 global_id : SV_DispatchThreadID, uint3 group_id : S
         float3 left_view_pos = float3((global_id.x - W * 0.5) * scale, (H * 0.5 - global_id.y) * scale, left_depth);
         float4 right_clip_pos = mul(_MatrixRPRVLV, float4(left_view_pos, 1.0));
         float2 right_ndc_pos = right_clip_pos.xy / right_clip_pos.w;
-        float2 right_mean_2d = ((right_ndc_pos - (1.0f - _VecScreenParams.zw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
+        float2 right_mean_2d = ((right_ndc_pos - (1.0f - _VecScreenOffset.xw) + 1.0f) * _VecScreenParams.xy - 1.0f) * 0.5f;
         
         _GSRenderTexture[uint3(global_id.x + w_offset, H + h_offset - global_id.y, 0)] = float4(gamma_color, 1.0 - left_T);
         _GSRenderTexture[uint3(right_mean_2d.x + w_offset, H + h_offset - right_mean_2d.y, 1)] = float4(gamma_color, 1.0 - left_T);

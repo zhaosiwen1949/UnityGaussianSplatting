@@ -81,9 +81,11 @@ namespace GaussianSplatting.Runtime
         [Tooltip("Occlusion Plane list")] public GameObject[] m_OcclusionPlanes;
 
         [Range(1, 10)] public int m_TileScale = 2;
-        [Range(0.5f, 1.0f)] public float m_WidthScale = 0.75f;
-        [Range(0.5f, 1.0f)] public float m_HeightScale = 0.75f;
-        [Range(0.1f, 1.0f)] public float m_TextureScale = 0.5f;
+        [Range(0.1f, 1.0f)] public float m_TopScale = 1.0f;
+        [Range(0.1f, 1.0f)] public float m_BottomScale = 1.0f;
+        [Range(0.1f, 1.0f)] public float m_LeftScale = 1.0f;
+        [Range(0.1f, 1.0f)] public float m_RightScale = 1.0f;
+        [Range(0.1f, 1.0f)] public float m_TextureScale = 1.0f;
         [Range(0.05f, 1.0f)] public float m_DepthCullingThreshold = 0.4f;
         [Range(0.0f, 1.0f)] public float m_Sharpness = 0.92f;
         [Range(0.0f, 10.0f)] public float m_LodBase = 0.0f;
@@ -226,6 +228,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int MatrixRPRVLV = Shader.PropertyToID("_MatrixRPRVLV");
             public static readonly int Focal = Shader.PropertyToID("_Focal");
             public static readonly int VecScreenParams = Shader.PropertyToID("_VecScreenParams");
+            public static readonly int VecScreenOffset = Shader.PropertyToID("_VecScreenOffset");
             public static readonly int VecWorldSpaceCameraPos = Shader.PropertyToID("_VecWorldSpaceCameraPos");
             public static readonly int CameraTargetTexture = Shader.PropertyToID("_CameraTargetTexture");
             public static readonly int SelectionCenter = Shader.PropertyToID("_SelectionCenter");
@@ -532,7 +535,12 @@ namespace GaussianSplatting.Runtime
         {
             int screenW = cam.pixelWidth, screenH = cam.pixelHeight;
             int eyeW = XRSettings.eyeTextureWidth, eyeH = XRSettings.eyeTextureHeight;
-            return new Vector4((eyeW != 0 ? eyeW : screenW) * m_TextureScale, (eyeH != 0 ? eyeH : screenH) * m_TextureScale, m_WidthScale, m_HeightScale);
+            return new Vector4((eyeW != 0 ? eyeW : screenW) * m_TextureScale, (eyeH != 0 ? eyeH : screenH) * m_TextureScale, (m_RightScale + m_LeftScale) / 2.0f, (m_TopScale + m_BottomScale) / 2.0f);
+        }
+        
+        public Vector4 GetScreenOffset()
+        {
+            return new Vector4(m_LeftScale, m_RightScale, m_TopScale, m_BottomScale);
         }
         
         void GetTileConfig(ComputeShader cs, Camera cam, out int tileX, out int tileY, out int blockX, out int blockY)
@@ -548,8 +556,8 @@ namespace GaussianSplatting.Runtime
                 out _);
             blockX = (int)gsX * m_TileScale;
             blockY = (int)gsY * m_TileScale;
-            tileX = (int)((screenPar.x * m_WidthScale + blockX - 1) / blockX);
-            tileY = (int)(screenPar.y * m_HeightScale + blockY - 1) / blockY;
+            tileX = (int)((screenPar.x * screenPar.z + blockX - 1) / blockX);
+            tileY = (int)(screenPar.y * screenPar.w + blockY - 1) / blockY;
         }
 
         void GetDispatchGroupNum(int count, int groupDim, out int countX, out int countY)
@@ -610,6 +618,7 @@ namespace GaussianSplatting.Runtime
             Matrix4x4 matO2W = tr.localToWorldMatrix;
             Matrix4x4 matW2O = tr.worldToLocalMatrix;
             Vector4 screenPar = GetScreenParams(cam);
+            Vector4 screenOffset = GetScreenOffset();
             Vector4 camPos = cam.transform.position;
 
             // calculate view dependent data for each splat
@@ -681,6 +690,7 @@ namespace GaussianSplatting.Runtime
             cmb.SetComputeMatrixParam(m_CSSplatUtilities, Props.MatrixWorldToObject, matW2O);
 
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenOffset, screenOffset);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecWorldSpaceCameraPos, camPos);
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatScale, m_SplatScale);
             cmb.SetComputeFloatParam(m_CSSplatUtilities, Props.SplatOpacityScale, m_OpacityScale);
@@ -794,6 +804,10 @@ namespace GaussianSplatting.Runtime
             // 设置屏幕像素大小
             Vector4 screenPar = GetScreenParams(cam);
             cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenParams, screenPar);
+            
+            // 设置屏幕像素偏移
+            Vector4 screenOffset = GetScreenOffset();
+            cmb.SetComputeVectorParam(m_CSSplatUtilities, Props.VecScreenOffset, screenOffset);
 
             // 设定 GemoState 的数据
             cmb.SetComputeBufferParam(m_CSSplatUtilities, (int)KernelIndices.RenderViewData, Props.RO_GeomLeftData,
