@@ -104,6 +104,7 @@ namespace GaussianSplatting.Runtime
         GraphicsBuffer m_GpuOtherData;
         GraphicsBuffer m_GpuSHData;
         GraphicsBuffer m_GpuLODData;
+        GraphicsBuffer m_GpuLODIndexData;
         
         Texture m_GpuColorData;
         internal GraphicsBuffer m_GpuChunks;
@@ -163,6 +164,7 @@ namespace GaussianSplatting.Runtime
             public static readonly int SplatOther = Shader.PropertyToID("_SplatOther");
             public static readonly int SplatSH = Shader.PropertyToID("_SplatSH");
             public static readonly int SplatLOD = Shader.PropertyToID("_SplatLOD");
+            public static readonly int SplatLODIndex = Shader.PropertyToID("_SplatLODIndex");
             public static readonly int SplatColor = Shader.PropertyToID("_SplatColor");
             public static readonly int SplatSelectedBits = Shader.PropertyToID("_SplatSelectedBits");
             public static readonly int SplatDeletedBits = Shader.PropertyToID("_SplatDeletedBits");
@@ -290,6 +292,9 @@ namespace GaussianSplatting.Runtime
             {
                 m_GpuLODData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.lodData.dataSize / 4), 4) { name = "GaussianLODData" };
                 m_GpuLODData.SetData(asset.lodData.GetData<uint>());
+                
+                m_GpuLODIndexData = new GraphicsBuffer(GraphicsBuffer.Target.Raw | GraphicsBuffer.Target.CopySource, (int) (asset.lodIndexData.dataSize / 4), 4) { name = "GaussianLODIndexData" };
+                m_GpuLODIndexData.SetData(asset.lodIndexData.GetData<uint>());
             }
             
             var (texWidth, texHeight) = GaussianSplatAsset.CalcTextureSize(asset.splatCount);
@@ -437,6 +442,7 @@ namespace GaussianSplatting.Runtime
             if (m_Asset.isLOD)
             {
                 cmb.SetComputeBufferParam(cs, kernelIndex, Props.SplatLOD, m_GpuLODData);
+                cmb.SetComputeBufferParam(cs, kernelIndex, Props.SplatLODIndex, m_GpuLODIndexData);
                 cmb.EnableKeyword(m_CSSplatUtilities, m_UseLODKeyWord);
             }
             else
@@ -467,6 +473,7 @@ namespace GaussianSplatting.Runtime
             DisposeBuffer(ref m_GpuOtherData);
             DisposeBuffer(ref m_GpuSHData);
             DisposeBuffer(ref m_GpuLODData);
+            DisposeBuffer(ref m_GpuLODIndexData);
             DisposeBuffer(ref m_GpuChunks);
             
             DisposeBuffer(ref m_AltKey_left);

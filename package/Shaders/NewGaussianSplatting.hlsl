@@ -779,6 +779,7 @@ SplatBufferDataType _SplatPos;
 SplatBufferDataType _SplatOther;
 SplatBufferDataType _SplatSH;
 SplatBufferDataType _SplatLOD;
+SplatBufferDataType _SplatLODIndex;
 Texture2D _SplatColor;
 uint _SplatFormat;
 
@@ -892,6 +893,11 @@ float3 LoadAndDecodeVector(SplatBufferDataType dataBuffer, uint addrU, uint fmt)
 float4 LoadSplatLOD(uint idx)
 {
     return LoadFloat4(_SplatLOD, idx * 16);
+}
+
+uint LoadSplatLODIndex(uint idx)
+{
+    return LoadUInt(_SplatLODIndex, idx * 4);
 }
 
 float3 LoadSplatPosValue(uint index)

@@ -263,6 +263,8 @@ void CSPreProcessViewData (uint3 id : SV_DispatchThreadID)
     float angleExtend = 3;
 
     float4 thresholds = LoadSplatLOD(idx);
+    uint lodIndex = LoadSplatLODIndex(idx);
+    
     if ( centerLeftClipPos.w > thresholds.y + depthOffset + depthExtend ||
         cosTheta < cos(radians(thresholds.w + angleOffset + angleExtend)) ||
         (centerLeftClipPos.w < thresholds.x + depthOffset - depthExtend && cosTheta > cos(radians(thresholds.z + angleOffset - angleExtend)))) return;

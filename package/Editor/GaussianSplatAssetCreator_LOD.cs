@@ -599,6 +599,39 @@ namespace GaussianSplatting.Editor
             data.Dispose();
         }
         
+        [BurstCompile]
+        struct CreateLODIndexDataJobWithLOD : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<InputSplatDataWithLOD> m_Input;
+            [NativeDisableParallelForRestriction] public NativeArray<byte> m_Output;
+
+            public unsafe void Execute(int index)
+            {
+                byte* outputPtr = (byte*) m_Output.GetUnsafePtr() + index * 4;
+                *(uint*)outputPtr = (uint)m_Input[index].lod;
+            }
+        }
+        
+        void CreateLODIndexData(NativeArray<InputSplatDataWithLOD> inputSplats, string filePath, ref Hash128 dataHash)
+        {
+            int dataLen = inputSplats.Length * 4;
+            NativeArray<byte> data = new(dataLen, Allocator.TempJob);
+
+            CreateLODIndexDataJobWithLOD job = new CreateLODIndexDataJobWithLOD
+            {
+                m_Input = inputSplats,
+                m_Output = data
+            };
+            job.Schedule(inputSplats.Length, 8192).Complete();
+
+            dataHash.Append(data);
+
+            using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+            fs.Write(data);
+
+            data.Dispose();
+        }
+        
         NativeArray<InputSplatDataWithLOD> LoadInputSplatFileWithLOD(string filePath)
         {
             NativeArray<InputSplatDataWithLOD> data = default;
@@ -677,6 +710,7 @@ namespace GaussianSplatting.Editor
             string pathCol = $"{m_OutputFolder}/{baseName}_col.bytes";
             string pathSh = $"{m_OutputFolder}/{baseName}_shs.bytes";
             string pathLOD = $"{m_OutputFolder}/{baseName}_lod.bytes";
+            string pathLODIndex = $"{m_OutputFolder}/{baseName}_lod_index.bytes";
 
             // if we are using full lossless (FP32) data, then do not use any chunking, and keep data as-is
             bool useChunks = isUsingChunks;
@@ -687,6 +721,7 @@ namespace GaussianSplatting.Editor
             CreateColorData(inputSplats, pathCol, ref dataHash);
             CreateSHData(inputSplats, pathSh, ref dataHash, clusteredSHs);
             CreateLODData(inputSplats, pathLOD, ref dataHash);
+            CreateLODIndexData(inputSplats, pathLODIndex, ref dataHash);
             asset.SetDataHash(dataHash);
 
             splatSHIndices.Dispose();
@@ -703,7 +738,8 @@ namespace GaussianSplatting.Editor
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathOther),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathCol),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh),
-                AssetDatabase.LoadAssetAtPath<TextAsset>(pathLOD));
+                AssetDatabase.LoadAssetAtPath<TextAsset>(pathLOD),
+                AssetDatabase.LoadAssetAtPath<TextAsset>(pathLODIndex));
 
             var assetPath = $"{m_OutputFolder}/{baseName}.asset";
             var savedAsset = CreateOrReplaceAsset(asset, assetPath);

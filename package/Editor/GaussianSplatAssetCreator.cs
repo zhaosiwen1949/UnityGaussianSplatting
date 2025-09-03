@@ -327,6 +327,7 @@ namespace GaussianSplatting.Editor
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathOther),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathCol),
                 AssetDatabase.LoadAssetAtPath<TextAsset>(pathSh),
+                null,
                 null);
 
             var assetPath = $"{m_OutputFolder}/{baseName}.asset";

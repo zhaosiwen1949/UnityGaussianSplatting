@@ -121,7 +121,7 @@ namespace GaussianSplatting.Runtime
             m_DataHash = hash;
         }
 
-        public void SetAssetFiles(TextAsset dataChunk, TextAsset dataPos, TextAsset dataOther, TextAsset dataColor, TextAsset dataSh, TextAsset dataLOD)
+        public void SetAssetFiles(TextAsset dataChunk, TextAsset dataPos, TextAsset dataOther, TextAsset dataColor, TextAsset dataSh, TextAsset dataLOD, TextAsset dataLODIndex)
         {
             m_ChunkData = dataChunk;
             m_PosData = dataPos;
@@ -129,6 +129,7 @@ namespace GaussianSplatting.Runtime
             m_ColorData = dataColor;
             m_SHData = dataSh;
             m_LODData = dataLOD;
+            m_LODIndexData = dataLODIndex;
         }
 
         public static int GetOtherSizeNoSHIndex(VectorFormat scaleFormat)
@@ -216,6 +217,7 @@ namespace GaussianSplatting.Runtime
         [SerializeField] TextAsset m_OtherData;
         [SerializeField] TextAsset m_SHData;
         [SerializeField] TextAsset m_LODData;
+        [SerializeField] TextAsset m_LODIndexData;
         // Chunk data is optional (if data formats are fully lossless then there's no chunking)
         [SerializeField] TextAsset m_ChunkData;
 
@@ -231,6 +233,7 @@ namespace GaussianSplatting.Runtime
         public TextAsset otherData => m_OtherData;
         public TextAsset shData => m_SHData;
         public TextAsset lodData => m_LODData;
+        public TextAsset lodIndexData => m_LODIndexData;
         public TextAsset chunkData => m_ChunkData;
         public CameraInfo[] cameras => m_Cameras;
 
